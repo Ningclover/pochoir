@@ -46,7 +46,7 @@ class Store:
         md = None
         npz = dp.parent.joinpath(dp.stem + self.dsext)
         if npz.exists():
-            arrs = numpy.load(dp.resolve())
+            arrs = numpy.load(dp.resolve(),allow_pickle=True)
             arr = arrs[dp.stem]
         mdf = dp.parent.joinpath(dp.stem + self.mdext)
         md = dict()
@@ -91,7 +91,7 @@ def load1(filename, key):
     '''
     Return array in named file at key
     '''
-    fp = numpy.load(filename)
+    fp = numpy.load(filename,True)
     return fp[key]
     
 
@@ -99,6 +99,6 @@ def load(filename):
     '''
     Return dict of all arrays in named file
     '''
-    return numpy.load(filename)
+    return numpy.load(filename,True)
     
 

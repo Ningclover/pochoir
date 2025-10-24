@@ -60,6 +60,7 @@ import sys
 import json
 import click
 import pochoir
+from . import units
 # no others than click and pochoir!
 
 @click.group()
@@ -341,8 +342,12 @@ def fdm(ctx, initial, boundary,
               help="Input potential array")
 @click.option("-V", "--velocity", type=str,
               help="Output velocity array")
+@click.option("-L", "--diff-longitudinal", "dl_key", type=str, default=None,
+              help="Output key for longitudinal diffusion (dl)")
+@click.option("-T", "--diff-transverse", "dt_key", type=str, default=None,
+              help="Output key for transverse diffusion (dt)")
 @click.pass_context
-def velo(ctx, temperature, potential, velocity):
+def velo(ctx, temperature, potential, velocity,dl_key,dt_key):
     '''
     Calculate a velocity field from a potential field
     '''
@@ -350,14 +355,91 @@ def velo(ctx, temperature, potential, velocity):
     pot, md = ctx.obj.get(potential, True)
     domain = md['domain']
     dom = ctx.obj.get_domain(domain)
-
+    bc = md['boundary']
+    barr = ctx.obj.get(bc)
+    pot = pot#*units.V
+    print("TEST=",pot[1,1,-1],"; Spacing=",*dom.spacing)
     efield = pochoir.arrays.gradient(pot, *dom.spacing)
+    flag = barr==1
+    efield[0][flag]=0
+    efield[1][flag]=0
+    efield[2][flag]=0
+    #efield[0][:,0,:]=0
+    #efield[0][:,-1,:]=0
+    efield[1][:,0,:]=0
+    efield[1][:,-1,:]=0
+    efield[0][0,:,:]=0
+    efield[0][-1,:,:]=0
+    #efield[1][0,:,:]=0
+    #efield[1][-1,:,:]=0
+    #for i in range(1,barr.shape[0]-1):
+    #    for j in range(1,barr.shape[1]-1):
+    #        for k in range(1,barr.shape[2]-1):
+    #            if barr[i-1,j,k]==1 and efield[0][i,j,k]<0:
+    #                efield[0][i,j,k]=0
+    #            if barr[i+1,j,k]==1 and efield[0][i,j,k]>0:
+    #                efield[0][i,j,k]=0
+    #            if barr[i,j-1,k]==1 and efield[0][i,j,k]<0:
+    #                efield[0][i,j,k]=0
+    #            if barr[i,j+1,k]==1 and efield[0][i,j,k]>0:
+    #                efield[0][i,j,k]=0
+    #            if barr[i,j,k-1]==1 and efield[0][i,j,k]<0:
+    #                efield[0][i,j,k]=0
+    #            if barr[i,j,k+1]==1 and efield[0][i,j,k]>0:
+    #                efield[0][i,j,k]=0
+
+    import numpy
+    #efield[2][:,:,:102]=0
+    #efield[0][:,:,:102]=0
+    #efield[1][:,:,:102]=0
+    efield=efield*units.V
+    #efield[0][:,:,:]=0
+    #efield[1][:,:,:]=0
+    #efield[2][:,:,:]=48.67*units.V
+    
+    #temp=87.7
+    print("temp=",temp)
     emag = pochoir.arrays.vmag(efield)
     mu = pochoir.lar.mobility(emag, temp)
-    varr = [e*mu for e in efield]
-    params = dict(domain=domain, taxon="velocity", command="velo",
+    if dl_key is not None:
+        dl = pochoir.lar.diff_longit(emag,temp)
+    if dt_key is not None:
+        dt = pochoir.lar.diff_tran(emag,temp)
+    varr = [e*mu/units.mm**2 for e in efield]
+    varr=numpy.array(varr)
+    #varr[2][:,:,:101]=0
+    import matplotlib.pyplot as plt
+    speed= emag
+    speed_unit = units.mm/units.us
+    speed_z = varr[2][:,:,:]/speed_unit
+    #Draw for PCB
+    x = numpy.linspace(0,420,4200)
+    for i in range(0,25):
+        for j in range(0,17):
+            plt.plot(x,speed_z[i,j,:])
+            #if i==10 and j==8:
+            #    for l in range(1,len(x)-1):
+            #        print(x[l]," ",pot[i,j,l]," ",(pot[i,j,l+1]-pot[i,j,l-1]))
+    # Draw for Pixel
+    #x = numpy.linspace(0,150,1500)
+    #for i in range(0,38):
+    #    for j in range(0,38):
+    #        plt.plot(x,speed_z[i,j,:])
+            #if i==10 and j==8:
+                #for l in range(1,len(x)-1):
+                 #   print(x[l]," ",pot[i,j,l]," ",(pot[i,j,l+1]-pot[i,j,l-1]))
+    plt.show()
+    params = dict(domain=domain, command="velo",
                   potential=potential, temperature=temp)
-    ctx.obj.put(velocity, varr, **params)
+    # save velocity
+    ctx.obj.put(velocity, varr, **{**params, "taxon": "velocity"})
+
+    # save dl/dt if keys provided
+    if dl_key is not None:
+        ctx.obj.put(dl_key, dl, **{**params, "taxon": "diffusion_longitudinal"})
+
+    if dt_key is not None:
+        ctx.obj.put(dt_key, dt, **{**params, "taxon": "diffusion_transverse"})
 
 
 
@@ -374,7 +456,7 @@ def grad(ctx, scalar, gradient):
     pot, md = ctx.obj.get(scalar, True)
     domain = md['domain']
     dom = ctx.obj.get_domain(domain)
-    field = pochoir.arrays.gradient(pot, spacing=dom.spacing)
+    field = pochoir.arrays.gradient(pot, *dom.spacing)
     ctx.obj.put(gradient, field, taxon="gradient",
                 domain=domain, scalar=scalar, command="grad")
 
@@ -383,9 +465,11 @@ def grad(ctx, scalar, gradient):
 @cli.command()
 @click.option("-S","--starts", default=None, type=str,
               help="Output starts points array")
+@click.option("-m","--mode", default="no", type=str,
+              help="enable hardcodede array input")
 @click.argument("points", nargs=-1)
 @click.pass_context
-def starts(ctx, starts, points):
+def starts(ctx, starts, mode, points):
     '''
     Store "starting" points.
     '''
@@ -393,10 +477,33 @@ def starts(ctx, starts, points):
     if not npoints:
         raise ValueError("require at least one point")
     points = [pochoir.arrays.fromstr1(p) for p in points]
-
+    
     # fixme: we say we don't allow numpy in main...
+    if mode=="yes":
+        points=[]
+        spacing = 0.4 #0.4 for 10x10 ; 0.49 for 8x8 ; 0.63 for 6x6
+        step= 9 # 9 for 10x10, 7 for 8x8 , 5 for 6x6x
+        
+        points.append([spacing,spacing,148.0])
+        for i in range(1,step):
+            points.append([spacing,i*spacing,148.0])
+        points.append([spacing,spacing*(step+1),148.0])
+        for j in range(1,step):
+            points.append([j*spacing,spacing,148.0])
+            for i in range(1,step):
+                points.append([j*spacing,i*spacing,148.0])
+            points.append([j*spacing,spacing*(step+1),148.0])
+        points.append([spacing*(step+1),spacing,148.0])
+        for i in range(1,step):
+            points.append([spacing*(step+1),i*spacing,148.0])
+        points.append([spacing*(step+1),spacing*(step+1),148.0])
+    
+    print(points)
+    print(len(points))
+        
     import numpy
     arr = numpy.asarray(points)
+    print("whatether we save: ",arr)
     ctx.obj.put(starts, arr, taxon="points", command="starts")
 
 
@@ -407,18 +514,23 @@ def starts(ctx, starts, points):
               help="Input starting points")
 @click.option("--velocity", type=str,
               help="Intput velocity array")
+@click.option("-L", "--diff-longitudinal", "dl_key", type=str, default=None,
+              help="(Optional) Input longitudinal diffusion field")
+@click.option("-T", "--diff-transverse", "dt_key", type=str, default=None,
+              help="(Optional) Input transverse diffusion field")
 @click.option("--verbose/--no-verbose", default=False,
               help="Verbose print during calculation")
-@click.option("--engine", type=click.Choice(["numpy", "torch"]),
+@click.option("--engine", type=click.Choice(["numpy", "torch","numpyold"]),
               default="numpy",
               help="The IVP engine to use")
 @click.argument("steps", nargs=-1)
 @click.pass_context
-def drift(ctx, paths, starts, velocity, verbose, engine, steps):
+def drift(ctx, paths, starts, velocity, dl_key, dt_key, verbose, engine, steps):
     '''
     Calculate drift paths.
     '''
     start_points = ctx.obj.get(starts)
+    print("all start_points: ",start_points)
     if start_points is None:
         click.echo(f'no starts: {starts}')
         return -1
@@ -434,12 +546,23 @@ def drift(ctx, paths, starts, velocity, verbose, engine, steps):
     velo, md = ctx.obj.get(velocity, True)
     domain = md['domain']
     dom = ctx.obj.get_domain(domain)
+    
+    use_sde = (dl_key is not None) and (dt_key is not None)
+    dl = dt = None
+    if use_sde:
+        dl, md_dl = ctx.obj.get(dl_key, True)
+        dt, md_dt = ctx.obj.get(dt_key, True)
 
     # shape: (nstarts, nticks, ndims)
     thepaths = pochoir.arrays.zeros((len(start_points), len(ticks),
                                      len(dom.shape)))
+    from pochoir import drift_numpy
     for ind, point in enumerate(start_points):
-        path = drifter(dom, point, velo, ticks, verbose=verbose)
+        #print("input point: ",point)
+        if not use_sde:
+            path = drifter(dom, point, velo, ticks, verbose=verbose)
+        else:
+            path = drift_numpy.solve_sde(dom, point, velo, dl, dt , ticks, verbose=verbose)
         thepaths[ind]=path
 
     params=dict(taxon="paths", command="drift", domain=domain,
@@ -473,7 +596,6 @@ def bc_interp(ctx, xcoord,                        # option
     sol2D, md2d = ctx.obj.get(potential2d, True)
     barr3D, md3d = ctx.obj.get(boundary3d, True)
     arr3D = ctx.obj.get(initial3d)
-
     domain2d = md2d['domain']
     domain3d = md3d['domain']
     dom2D = ctx.obj.get_domain(domain2d)
@@ -489,6 +611,69 @@ def bc_interp(ctx, xcoord,                        # option
                   xcoord=xcoord)
     ctx.obj.put(initial, arr, taxon="initial", **params)
     ctx.obj.put(boundary, barr, taxon="boundary", **params)
+    
+@cli.command("extendwf")
+@click.option("-p", "--potential2d", type=str,
+              help="The input 2D scalar potential array")
+@click.option("-P", "--potential3d", type=str,
+              help="The input 3D scalar potential array")
+@click.option("-n", "--nstrips", default=10.0,
+              help="Max number of strips from the central for the extension")
+@click.option("-o","--output", type=str,
+              help="Output enlarged weighting field")
+@click.pass_context
+def extendwf(ctx,
+              potential2d, potential3d,nstrips,
+              output
+              ):
+    '''
+    extend 3D weigting filed using 2D weighting field to full 2D volume
+    '''
+    sol2D, md2d = ctx.obj.get(potential2d, True)
+    sol3D, md3d = ctx.obj.get(potential3d, True)
+    domain2d = md2d['domain']
+    domain3d = md3d['domain']
+    dom2D = ctx.obj.get_domain(domain2d)
+    dom3D = ctx.obj.get_domain(domain3d)
+    import numpy
+    #at the moment assume that 2d and 3d simulations have same properties with some magic numbers (including shifts in 2D solution)
+    #NEEDS FIX for better calculation
+    cut_z=1600 #this is the number we cut 3Dweight sim along drift
+    horizontal = "yes"
+    if horizontal=="yes":
+        onestrip = dom3D.shape[0]/7.0
+        newXdim = int((nstrips*2+1)*onestrip)
+        arr = numpy.zeros((newXdim,dom3D.shape[1],dom2D.shape[1]))
+        for i in range(0,newXdim):
+            if i<onestrip*7:
+                for j in range(0,dom3D.shape[1]):
+                    arr[i,j,:] = sol2D[i,:]
+            if i>=onestrip*7 and i<onestrip*14:
+                for j in range(0,dom3D.shape[1]):
+                    arr[i,j,:cut_z] = sol3D[i-dom3D.shape[0],j,:]
+                    arr[i,j,cut_z:] = sol2D[i,cut_z:]
+            if i>=onestrip*14:
+                for j in range(0,dom3D.shape[1]):
+                    arr[i,j,:] = sol2D[i,:]
+    #arr = numpy.zeros((dom3D.shape[0],dom3D.shape[1],dom2D.shape[1]))
+    #arr[:,:,0:int(dom3D.shape[2])]=sol3D
+
+    #for i in range(0,dom3D.shape[1]):
+    #    arr[:,i,int(dom3D.shape[2]):int(dom2D.shape[1])]=sol2D[742:1442,int(dom3D.shape[2]):int(dom2D.shape[1])]
+    #for i in range(0,dom3D.shape[1]):
+        #arr[:,i,int(dom3D.shape[2]-2):int(dom3D.shape[2])]=(sol3D[:,i,int(dom3D.shape[2]-2):int(dom3D.shape[2])]+arr[:,i,int(dom3D.shape[2]-2):int(dom3D.shape[2])])/2
+   #     arr[:,i,int(dom3D.shape[2])]=(sol3D[:,i,int(dom3D.shape[2]-1)]+arr[:,i,int(dom3D.shape[2])])/2
+   #     arr[:,i,int(dom3D.shape[2]+1)]=(sol3D[:,i,int(dom3D.shape[2]-1)]+arr[:,i,int(dom3D.shape[2]+1)])/2
+   #     arr[:,i,int(dom3D.shape[2]+2)]=(sol3D[:,i,int(dom3D.shape[2]-1)]+arr[:,i,int(dom3D.shape[2]+2)])/2
+   #     arr[:,i,int(dom3D.shape[2]+3)]=(sol3D[:,i,int(dom3D.shape[2]-1)]+arr[:,i,int(dom3D.shape[2]+3)])/2
+   #     arr[:,i,int(dom3D.shape[2]+4)]=(sol3D[:,i,int(dom3D.shape[2]-1)]+arr[:,i,int(dom3D.shape[2]+4)])/2
+    print("final domain:",arr.shape)
+    dom = pochoir.domain.Domain(arr.shape, 0.05, [0.0,0.0,0.0])
+    domain = "domain/weight3dextend"
+    ctx.obj.put_domain(domain, dom)
+    params = dict(command="extendwf",domain=domain,
+                  potential2d=potential2d,potential3d=potential3d,nstrips=nstrips, output=output )
+    ctx.obj.put(output, arr, taxon="output", **params)
 
 
 @cli.command()
@@ -529,15 +714,22 @@ def move_paths(ctx, input, translation, output):
               help="The input scalar weighting potential")
 @click.option("-p","--paths", type=str,
               help="The input drift paths array")
+@click.option("-a","--average", default=0.0,
+              help="Average N paths along strip")
+@click.option("-n","--nstrips", default=1.0,
+              help="Calculate current for n strips from the central as well ")
 @click.option("-O", "--output", type=str,
               help="Output array holding induced current waveforms")
 @click.pass_context
-def induce(ctx, charge, weighting, paths, output):
+def induce(ctx, charge, weighting, paths, average,nstrips, output):
     '''
     Calculate induced current.
 
     The current is that induced by the given charge moving along the
     paths and in the presence of a scalar weighting potential.
+    
+    Note: Paths are assumed to be provided in order of averaging blocks
+    current for the strips culculated based on 50L detector mirror symmetry
     '''
     wpot, wmd = ctx.obj.get(weighting, True)
     try:
@@ -545,28 +737,396 @@ def induce(ctx, charge, weighting, paths, output):
     except KeyError:
         click.echo(f'no domain for {weighting}.  metadata:\n{wmd}')
         return -1
+    import numpy
     dom = ctx.obj.get_domain(domain)
-
     the_paths, pmd = ctx.obj.get(paths, True)
     npaths, nsteps, ndim = the_paths.shape
     ticks = pochoir.arrays.linspace(pmd['tstart'], pmd['tstop'],
                                     pmd['nsteps'], endpoint=False)
-
     rgi = pochoir.arrays.rgi(dom.linspaces, wpot)
-    Q = charge * rgi(the_paths)
+    shift_x = dom.shape[0]*dom.spacing[0]/2.0
+    shift_y = 0#dom.shape[1]*dom.spacing[1]/2.0
+    shifted_paths = []
+    if nstrips>1:
+        dx = dom.shape[0]*dom.spacing[0]/nstrips
+        print("dx=",dx)
+        for i in range(0,int(nstrips)):
+            for j in range(0,len(the_paths)):
+                #newpath = [[45+(2.0*i+1.0)*dx/2.0-x[0],x[1],x[2]] for x in the_paths[j]]
+                #2view
+                #newpath = [[(2.0*i+1.0)*dx/2.0+x[0],x[1],x[2]] for x in the_paths[j]]
+                #eview coll
+                newpath = [[x[0]+i*1.0*dx,x[1]+1.45,x[2]] for x in the_paths[j]]
+                xdata_old = [x[0] for x in the_paths[j]]
+                #print(newpath)
+                xdata_new = [x[0] for x in newpath]
+                #flip if needed
+                #newpaths_f = [[x[0]-dx/2.0,x[1],x[2]] for x in newpaths[j]]
+                shifted_paths.append(newpath)
+    if nstrips<=1:
+        for i in range(0,len(the_paths)):
+            newpath = [[shift_x+x[0],x[1]+shift_y,x[2]] for x in the_paths[i]]
+            shifted_paths.append(newpath)
+        shifted_paths=numpy.array(shifted_paths)
+    print("TotalPaths=",len(shifted_paths))
+    Q = charge * rgi(shifted_paths) #/ units.V
+    print(wpot[325+714,14,340],wpot[325+714,15,340],wpot[326+714,14,340],wpot[325+714,15,340])
     assert len(Q.shape) == 2
-    assert Q.shape[0] == npaths
+    #assert Q.shape[0] == npaths
+    assert Q.shape[1] == nsteps
+    numpy.set_printoptions(threshold=sys.maxsize)
+    for i in range(0,len(shifted_paths[644])):
+        print(shifted_paths[699][i],shifted_paths[698][i],Q[699,i],Q[698,i])
+
+
+    dQ = Q[:, 1:] - Q[:, :-1]
+    dT = ticks[1:] - ticks[:-1]
+    I = []
+    I_tot = dQ/dT
+
+    if average>0:
+        print("Average ", average," paths along the stip")
+        tot_paths = int(len(I_tot)/average)
+        for i in range(0,len(I_tot),int(average)):
+            I_temp = numpy.zeros(I_tot[0].shape)
+            for p in range(0,int(average)):
+                I_temp=I_temp+numpy.asarray(I_tot[i+p])
+            I_temp = I_temp/average
+            I.append(I_temp.tolist())
+    if average<=0:
+        print("No Averaging")
+        I=I_tot
+    ctx.obj.put(output, I, command="induce", taxon="current",
+                charge = charge,
+                domain=domain, paths=paths,average=average,nsteps=nsteps, weighting=weighting)
+            
+        
+@cli.command()
+@click.option("-q","--charge", default=1.0,
+              help="The amount of drifting charge")
+@click.option("-w","--weighting", type=str,
+              help="The input scalar weighting potential")
+@click.option("-p","--paths", type=str,
+              help="The input drift paths array")
+@click.option("-a","--average", default=0.0,
+              help="Average N paths along strip")
+@click.option("-n","--npixels", default=1.0,
+              help="Calculate current for n pixels from the central as well ")
+@click.option("-O", "--output", type=str,
+              help="Output array holding induced current waveforms")
+@click.pass_context
+def induce_pixel(ctx, charge, weighting, paths, average,npixels, output):
+    '''
+    Calculate induced current.
+
+    For a single pixel
+    '''
+    wpot, wmd = ctx.obj.get(weighting, True)
+    try:
+        domain = wmd['domain']
+    except KeyError:
+        click.echo(f'no domain for {weighting}.  metadata:\n{wmd}')
+        return -1
+    import numpy
+    dom = ctx.obj.get_domain(domain)
+    the_paths, pmd = ctx.obj.get(paths, True)
+    npaths, nsteps, ndim = the_paths.shape
+    ticks = pochoir.arrays.linspace(pmd['tstart'], pmd['tstop'],
+                                    pmd['nsteps'], endpoint=False)
+    rgi = pochoir.arrays.rgi(dom.linspaces, wpot)
+    shift_x = dom.shape[0]*dom.spacing[0]/2.0
+    shift_y = 0#dom.shape[1]*dom.spacing[1]/2.0
+    shifted_paths = []
+    print("input paths shape : ",the_paths.shape)
+    if npixels>1:
+        #dx = dom.shape[0]*dom.spacing[0]/npixels
+        #print("dx=",dx)
+        #for i in range(0,int(npixels)):
+        #    for j in range(0,len(the_paths)):
+        #        #bigger pixle
+        #        newpath = [[0.3+3.8/2+x[0]+i*1.0*(4.4),x[1]+4.4+0.3+3.8/2,x[2]] for x in the_paths[j]]
+        #        #smaller pixle
+        #        #newpath = [[0.8+2.2/2+x[0]+i*1.0*(3.8),x[1]+3.8+0.8+2.2/2,x[2]] for x in the_paths[j]]
+        #        shifted_paths.append(newpath)
+        #100 paths for ND
+        sp1 = 10 # 10 ,8 , 6
+        sp2 = 5 # 5, 4 , 3
+        for lvl in range(sp1):
+            for i in range(sp1):
+                newpath=[[0.3+3.8/2+2.0*(4.4)+x[0],x[1]+2*4.4+0.3+3.8/2,x[2]] for x in the_paths[i+lvl*sp1]]
+                shifted_paths.append(newpath)
+            for i in range(sp1):
+                newpath=[[0.3+3.8/2+2.0*(4.4)+x[0],x[1]+2*4.4+0.3+3.8/2+4.4,x[2]] for x in the_paths[i+lvl*sp1]]
+                shifted_paths.append(newpath)
+            for i in range(sp2):
+                newpath=[[0.3+3.8/2+2.0*(4.4)+x[0],x[1]+2*4.4+0.3+3.8/2+4.4*2,x[2]] for x in the_paths[i+lvl*sp1]]
+                shifted_paths.append(newpath)
+        for lvl in range(sp1):
+            for i in range(sp1):
+                newpath=[[0.3+3.8/2+2.0*(4.4)+x[0]+4.4,x[1]+2*4.4+0.3+3.8/2,x[2]] for x in the_paths[i+lvl*sp1]]
+                shifted_paths.append(newpath)
+            for i in range(sp1):
+                newpath=[[0.3+3.8/2+2.0*(4.4)+x[0]+4.4,x[1]+2*4.4+0.3+3.8/2+4.4,x[2]] for x in the_paths[i+lvl*sp1]]
+                shifted_paths.append(newpath)
+            for i in range(sp2):
+                newpath=[[0.3+3.8/2+2.0*(4.4)+x[0]+4.4,x[1]+2*4.4+0.3+3.8/2+4.4*2,x[2]] for x in the_paths[i+lvl*sp1]]
+                shifted_paths.append(newpath)
+
+        for lvl in range(sp2):
+            for i in range(sp1):
+                newpath=[[0.3+3.8/2+2.0*(4.4)+x[0]+4.4*2,x[1]+2*4.4+0.3+3.8/2,x[2]] for x in the_paths[i+lvl*sp1]]
+                shifted_paths.append(newpath)
+            for i in range(sp1):
+                newpath=[[0.3+3.8/2+2.0*(4.4)+x[0]+4.4*2,x[1]+2*4.4+0.3+3.8/2+4.4,x[2]] for x in the_paths[i+lvl*sp1]]
+                shifted_paths.append(newpath)
+            for i in range(sp2):
+                newpath=[[0.3+3.8/2+2.0*(4.4)+x[0]+4.4*2,x[1]+2*4.4+0.3+3.8/2+4.4*2,x[2]] for x in the_paths[i+lvl*sp1]]
+                shifted_paths.append(newpath)
+
+            
+    if npixels<=1:
+        for i in range(0,len(the_paths)):
+            newpath = [[shift_x+x[0],x[1]+shift_y,x[2]] for x in the_paths[i]]
+            shifted_paths.append(newpath)
+        shifted_paths=numpy.array(shifted_paths)
+    print("TotalPaths=",len(shifted_paths))
+    startpoints=[]
+    endpoints=[]
+    for num,p in enumerate(shifted_paths):
+        #print(num," Path Starts=",p[0])
+        print(num," Path Starts=",p[0])
+        startpoints.append(p[0])
+        endpoints.append(p[-1])
+    Q = charge * rgi(shifted_paths) #/ units.V
+    assert len(Q.shape) == 2
+    #assert Q.shape[0] == npaths
+    assert Q.shape[1] == nsteps
+    numpy.set_printoptions(threshold=sys.maxsize)
+
+    dQ = Q[:, 1:] - Q[:, :-1]
+    dT = ticks[1:] - ticks[:-1]
+    I = []
+    I_tot = dQ/dT
+    
+    if average>0:
+        print("Average ", average," paths along the stip")
+        tot_paths = int(len(I_tot)/average)
+        for i in range(0,len(I_tot),int(average)):
+            I_temp = numpy.zeros(I_tot[0].shape)
+            for p in range(0,int(average)):
+                I_temp=I_temp+numpy.asarray(I_tot[i+p])
+            I_temp = I_temp/average
+            I.append(I_temp.tolist())
+    if average<=0:
+        print("No Averaging")
+        I=I_tot
+    import numpy as np
+    #np.save('fr_4p4pitch_3.8pix_circgrid_1p9.npy', I)
+    np.save('fr_4p4pitch_3.8pix_nogrid_10pathsperpixel.npy', I)
+    np.save('startpoints.npy', startpoints)
+    np.save('endpoints.npy', endpoints)
+    ctx.obj.put(output, I, command="induce", taxon="current",
+                charge = charge,
+                domain=domain, paths=paths,average=average,nsteps=nsteps, weighting=weighting)
+
+        
+        
+@cli.command()
+@click.option("-q","--charge", default=1.0,
+              help="The amount of drifting charge")
+@click.option("-w","--weighting", type=str,
+              help="The input scalar weighting potential")
+@click.option("-p","--paths", type=str,
+              help="The input drift paths array")
+@click.option("-a","--average", default=0.0,
+              help="Average N paths along strip")
+@click.option("-n","--nstrips", default=1.0,
+              help="Calculate current for n strips from the central as well ")
+@click.option("-O", "--output", type=str,
+              help="Output array holding induced current waveforms")
+@click.pass_context
+def induce_30deg(ctx, charge, weighting, paths, average,nstrips, output):
+    '''
+    Calculate induced current for 30deg config.
+
+    The current is that induced by the given charge moving along the
+    paths and in the presence of a scalar weighting potential.
+    
+    Note: Paths are assumed to be provided in order of averaging blocks
+    current for the strips culculated based on 50L detector mirror symmetry
+    '''
+    wpot, wmd = ctx.obj.get(weighting, True)
+    try:
+        domain = wmd['domain']
+    except KeyError:
+        click.echo(f'no domain for {weighting}.  metadata:\n{wmd}')
+        return -1
+    import numpy
+    dom = ctx.obj.get_domain(domain)
+    the_paths, pmd = ctx.obj.get(paths, True)
+    npaths, nsteps, ndim = the_paths.shape
+    ticks = pochoir.arrays.linspace(pmd['tstart'], pmd['tstop'],
+                                    pmd['nsteps'], endpoint=False)
+    rgi = pochoir.arrays.rgi(dom.linspaces, wpot)
+    shift_x = dom.shape[0]*dom.spacing[0]/2.0
+    shift_y = 0#dom.shape[1]*dom.spacing[1]/2.0
+    shifted_paths = []
+    if nstrips>1:
+        dx = dom.shape[0]*dom.spacing[0]/nstrips
+        for i in range(0,int(nstrips)):
+            counter=0
+            print("Process Strip: ",i)
+            if(i%2==0):
+                print("Direction 1")
+                for j in range(0,int(len(the_paths)/2)):
+                #newpath = [[45+(2.0*i+1.0)*dx/2.0-x[0],x[1],x[2]] for x in the_paths[j]]
+                #newpath = [[(2.0*i+1.0)*dx/2.0+x[0],x[1],x[2]] for x in the_paths[j]] config for 5mm strip looks like I put it on right sided of the strip
+                #for 30deg we sim paths as following first 4x11 paths are just shift and last 2x11 need a reversal as well
+                    if counter<4*11:
+                        # v1 newpath = [[i*1.0*dx+x[0],x[1],x[2]] for x in the_paths[j]]
+                        newpath = [[i*1.0*dx+x[0],x[1],x[2]] for x in the_paths[j]]
+                    else:
+                        # v1 newpath = [[2*2.55-x[0]+i*1.0*dx,x[1],x[2]] for x in the_paths[j]]
+                        newpath = [[2.55+x[0]+i*1.0*dx,x[1]+1.45,x[2]] for x in the_paths[j]]
+                    counter=counter+1
+                #flip if needed
+                #newpaths_f = [[x[0]-dx/2.0,x[1],x[2]] for x in newpaths[j]]
+                    shifted_paths.append(newpath)
+            else:
+                print("Direction 2")
+                for j in range(int(len(the_paths)/2),len(the_paths)):
+                    if counter<4*11:
+                    # v1 newpath = [[2.55-x[0]+i*1.0*dx,x[1],x[2]] for x in the_paths[j]]
+                        newpath = [[x[0]+i*1.0*dx,x[1]+1.45,x[2]] for x in the_paths[j]]
+                    else:
+                    # v1 newpath = [[2.55+x[0]+i*1.0*dx,x[1],x[2]] for x in the_paths[j]]
+                        newpath = [[2.55+x[0]+i*1.0*dx,x[1],x[2]] for x in the_paths[j]]
+                    counter=counter+1
+                    shifted_paths.append(newpath)
+    if nstrips<=1:
+        for i in range(0,len(the_paths)):
+            newpath = [[shift_x+x[0],x[1]+shift_y,x[2]] for x in the_paths[i]]
+            shifted_paths.append(newpath)
+        shifted_paths=numpy.array(shifted_paths)
+    print("TotalPaths=",len(shifted_paths))
+    Q = charge * rgi(shifted_paths) #/ units.V
+    assert len(Q.shape) == 2
+    #assert Q.shape[0] == npaths
     assert Q.shape[1] == nsteps
 
     dQ = Q[:, 1:] - Q[:, :-1]
     dT = ticks[1:] - ticks[:-1]
-    I = dQ/dT
+    I = []
+    I_tot = dQ/dT
 
-    ctx.obj.put(output, I, command="induce", taxon="current",
+    if average>0:
+        print("Average ", average," paths along the stip")
+        tot_paths = int(len(I_tot)/average)
+        for i in range(0,len(I_tot),int(average)):
+            print("Averaging processed: ",i," out of",len(I_tot))
+            I_temp = numpy.zeros(I_tot[0].shape)
+            for p in range(0,int(average)):
+                I_temp=I_temp+numpy.asarray(I_tot[i+p])
+            I_temp = I_temp/average
+            I.append(I_temp.tolist())
+    if average<=0:
+        print("No Averaging")
+        I=I_tot
+    ctx.obj.put(output, I, command="induce_30deg", taxon="current_deg",
                 charge = charge,
-                domain=domain, paths=paths, weighting=weighting)
+                domain=domain, paths=paths,average=average,nsteps=nsteps, weighting=weighting)
 
-
+@cli.command("convertfr")
+@click.option("-u","--uinput", type=str,
+              help="Input averaged current for indcution1")
+@click.option("-v","--vinput", type=str,
+              help="Input averaged current for induction2")
+@click.option("-w","--winput", type=str,
+              help="Input averaged current for collection")
+@click.option("-O", "--output", type=str,
+              help="Output file name")
+@click.argument("configs", nargs=-1)
+@click.pass_context
+def convertfr(ctx, uinput,vinput,winput,output, configs):
+    '''
+    Convert Field Responce in json WireCell format
+    
+    Takes current as an input
+    
+    Note: Due to symmetry in 50L detector strip configuration current version requires following input:
+     Current from 6 paths it transverse strip direction. Paths cover only half of the strip. Curent should be averaged along the strip prior to conversion. Paths should be chosen such with the same distance between them + first should start in the ~middle on the strip and last one as close to the middle of the pitch between strips as possible
+    '''
+    from . import schema
+    from . import persist
+    import numpy
+    
+    cfg = dict()
+    for config in configs:
+        cfg.update(json.loads(open(config,'rb').read().decode()))
+    curr_I1, curr_I1md = ctx.obj.get(uinput, True)
+    curr_I2, curr_I2md = ctx.obj.get(vinput, True)
+    curr_C, curr_Cmd = ctx.obj.get(winput, True)
+    anti_drift_axis = (1.0, 0.0, 0.0)
+    origin = cfg["origin"]
+    speed = cfg["speed"]
+    tstart = cfg["tstart"]
+    period = cfg["period"]
+    pathR_I1 = []
+    pathR_I2 = []
+    pathR_C = []
+    pitch_I1=cfg["planeUpitch"]
+    pitch_I2=cfg["planeVpitch"]
+    pitch_C=cfg["planeWpitch"]
+    nstrips = cfg["totstrip"]
+    npaths = cfg["npaths"]
+    #float("{:.2f}".format(stop))
+    pitchpos_I1 = float("{:.3f}".format(-1*pitch_I1*nstrips/2))
+    pitchpos_I2 = float("{:.3f}".format(-1*pitch_I2*nstrips/2))
+    pitchpos_C = float("{:.3f}".format(-1*pitch_C*nstrips/2))
+    in_strip_shift_I1 = float("{:.3f}".format(cfg["planeUpathdist"]))
+    in_strip_shift_I2 = float("{:.3f}".format(cfg["planeVpathdist"]))
+    in_strip_shift_C = float("{:.3f}".format(cfg["planeWpathdist"]))
+    between_strip_shift_I1 = float("{:.3f}".format(pitch_I1/2))
+    between_strip_shift_I2 = float("{:.3f}".format(pitch_I2/2))
+    between_strip_shift_C = float("{:.3f}".format(pitch_C/2))
+    import matplotlib.pyplot as plt
+    for i in range(0,npaths*nstrips,npaths):
+        for j in range(0,npaths):
+            pr_I1 = schema.PathResponse(-1*curr_I1[i+j][0:1325],pitchpos_I1,wirepos=0)
+            pr_I2 = schema.PathResponse(-1*curr_I2[i+j][0:1325],pitchpos_I2,wirepos=0)
+            pr_C = schema.PathResponse(-1*curr_C[i+j][0:1325],pitchpos_C,wirepos=0)
+            if i+j>0:
+                x = numpy.linspace(0,1325,1325)
+                plt.plot(x,curr_I2[i+j][0:1325])
+            pathR_I1.append(pr_I1)
+            pathR_I2.append(pr_I2)
+            pathR_C.append(pr_C)
+            if j<npaths-1:
+                pitchpos_I1 = float("{:.3f}".format(pitchpos_I1+in_strip_shift_I1))
+                pitchpos_I2 = float("{:.3f}".format(pitchpos_I2+in_strip_shift_I2))
+                pitchpos_C = float("{:.3f}".format(pitchpos_C+in_strip_shift_C))
+        pitchpos_I1 = float("{:.3f}".format(pitchpos_I1+between_strip_shift_I1))
+        pitchpos_I2 = float("{:.3f}".format(pitchpos_I2+between_strip_shift_I2))
+        pitchpos_C = float("{:.3f}".format(pitchpos_C+between_strip_shift_C))
+    plt.show()
+    planes=[]
+    planeid=0
+    location=cfg["planeUlocation"]
+    pitch=cfg["planeUpitch"]
+    plr_I1 = schema.PlaneResponse(pathR_I1,planeid,location,pitch)
+    planes.append(plr_I1)
+    planeid=1
+    location=cfg["planeVlocation"]
+    pitch=cfg["planeVpitch"]
+    plr_I2 = schema.PlaneResponse(pathR_I2,planeid,location,pitch)
+    planes.append(plr_I2)
+    planeid=2
+    location=cfg["planeWlocation"]
+    pitch=cfg["planeWpitch"]
+    plr_C = schema.PlaneResponse(pathR_C,planeid,location,pitch)
+    planes.append(plr_C)
+    fr = schema.FieldResponse(planes,anti_drift_axis, origin, tstart, period, speed)
+    persist.dumpfr(output,fr)
     
 @cli.command()
 @click.option("-w","--weighting", type=str,
@@ -628,7 +1188,150 @@ def plot_image(ctx, array, output, scale, units):
     if units:
         title += f' [{units}]'
     pochoir.plots.image(arr, output, dom, title, scale=scale)
+    
+    
+    
+@cli.command("plot-current")
+@click.option("-c", "--current", type=str, required=True,
+              help="Input current array to plot")
+@click.option("-C", "--currentcomp", type=str, required=False,
+              help="Input current array to plot")
+@click.option("-o", "--output",
+              type=click.Path(exists=False, dir_okay=False),
+              help="Output graphics file")
+@click.pass_context
+def plot_current(ctx, current,currentcomp, output):
+    '''
+    Visualize a dataset as 2D image
+    '''
+    arr, md = ctx.obj.get(current, True)
+    arr2, md2 = ctx.obj.get(currentcomp, True)
+    pochoir.plots.current(arr,arr2, output)
+    
+    
+@cli.command("plot-current-pixel")
+@click.option("-c", "--current", type=str, required=True,
+              help="Input current array to plot")
+@click.option("-o", "--output",
+              type=click.Path(exists=False, dir_okay=False),
+              help="Output graphics file")
+@click.pass_context
+def plot_current_pixel(ctx, current, output):
+    '''
+    Visualize a dataset as 2D image
+    '''
+    arr, md = ctx.obj.get(current, True)
+    pochoir.plots.currentpixel(arr, output)
 
+@cli.command("plot-scatter3d")
+@click.option("-a", "--array", type=str, required=True,
+              help="Input array to plot")
+@click.option("-o", "--output",
+              type=click.Path(exists=False, dir_okay=False),
+              help="Output graphics file")
+@click.option("-g", "--gif",
+              default="no", type=click.Choice(["yes","no"]),
+              help="create gif image ")
+@click.pass_context
+def plot_scatter3d(ctx, array, output,gif):
+    '''
+    Visualize a dataset as 3D image pdf + gif
+    '''
+    arr, md = ctx.obj.get(array, True)
+    domain = md.get("domain")
+    if domain:
+        dom = ctx.obj.get_domain(domain)
+    else:
+        dom = ctx.obj.get_domain(domain)
+    title = f'{array}'
+    pochoir.plots.scatt3d(arr, output, dom,gif,title)
+    
+    
+@cli.command("plot-slice3d")
+@click.option("-a", "--array", type=str, required=True,
+              help="Input array to plot")
+@click.option("-o", "--output",
+              type=click.Path(exists=False, dir_okay=False),
+              help="Output graphics file")
+@click.option("-s", "--scale", default="linear",
+              type=click.Choice(["linear","signedlog"]),
+              help="Output graphics file")
+@click.option("-d", "--dim", default="z",
+              type=click.Choice(["x","y","z"]),
+              help="choose axis to slice")
+@click.option("-m", "--magnitude", default="no", type=click.Choice(["yes","no"]),
+              help="calc magnitude")
+@click.option("-i","--index",type=int, default=1.0,
+              help="choose index to slice")
+@click.option("-u", "--units", type=str, default=None,
+              help="The units in which to display magnitude")
+@click.pass_context
+def plot_slice3d(ctx, array, output, scale,dim, magnitude, index, units):
+    '''
+    Visualize a dataset as 2D image
+    '''
+    parr, md = ctx.obj.get(array, True)
+    domain = md.get("domain")
+    if magnitude == "yes" :
+        import numpy
+        arr = numpy.sqrt(parr[0]*parr[0]+parr[1]*parr[1]+parr[2]*parr[2])
+    else:
+        arr = parr
+    if domain:
+        dom = ctx.obj.get_domain(domain)
+    if units is not None:
+        u = pochoir.arrays.fromstr1(units)
+        arr = arr/u
+    title = f'{array}'
+    if units:
+        title += f' [{units}]'
+    pochoir.plots.slice3d(arr, output, dom,scale,dim,index,title)
+
+@cli.command("plot-slice3d-twoarr")
+@click.option("-a", "--array", type=str, required=True,
+              help="Input array to plot")
+@click.option("-c", "--comparray", type=str, required=True,
+              help="Input array to plot")
+@click.option("-o", "--output",
+              type=click.Path(exists=False, dir_okay=False),
+              help="Output graphics file")
+@click.option("-s", "--scale", default="linear",
+              type=click.Choice(["linear","signedlog"]),
+              help="Output graphics file")
+@click.option("-d", "--dim", default="z",
+              type=click.Choice(["x","y","z"]),
+              help="choose axis to slice")
+@click.option("-m", "--magnitude", default="no", type=click.Choice(["yes","no"]),
+              help="calc magnitude")
+@click.option("-i","--index",type=int, default=1.0,
+              help="choose index to slice")
+@click.option("-u", "--units", type=str, default=None,
+              help="The units in which to display magnitude")
+@click.pass_context
+def plot_slice3d_twoarr(ctx, array,comparray, output, scale,dim, magnitude, index, units):
+    '''
+    Visualize a dataset as 2D image
+    '''
+    parr, md = ctx.obj.get(array, True)
+    parr2, md2 = ctx.obj.get(comparray, True)
+    domain = md.get("domain")
+    if magnitude == "yes" :
+        import numpy
+        arr = numpy.sqrt(parr[0]*parr[0]+parr[1]*parr[1]+parr[2]*parr[2])
+        arr2=parr2
+    else:
+        arr = parr
+        arr2= parr2
+    if domain:
+        dom = ctx.obj.get_domain(domain)
+    if units is not None:
+        u = pochoir.arrays.fromstr1(units)
+        arr = arr/u
+        arr2 = arr2/u
+    title = f'{array}'
+    if units:
+        title += f' [{units}]'
+    pochoir.plots.slice3d_two(arr,arr2, output, dom,scale,dim,index,title)
 
 @cli.command("plot-mag")
 @click.option("-a", "--array", type=str, required=True,
@@ -648,13 +1351,28 @@ def plot_mag(ctx, array, output, units):
     if domain:
         dom = ctx.obj.get_domain(domain)
     mag = pochoir.arrays.vmag(arr)
-    if units is not None:
-        u = pochoir.arrays.fromstr1(units)
-        mag = mag/u
-    title = f'{array}'
-    if units:
-        title += f' [{units}]'
-    pochoir.plots.image(mag, output, dom, title)
+    from pochoir import units
+    import numpy
+    import matplotlib.pyplot as plt
+
+    speed_unit = units.mm/units.us
+    speed= mag/speed_unit
+    speed_z = arr[2][:,:,:]#/speed_unit
+    x = numpy.linspace(0,200,4000)
+    for i in range(0,25):
+        for j in range(0,17):
+            plt.plot(x,speed_z[i,j,:])
+    plt.title('velocity in the middle')
+    plt.xlabel('vertical drift , mm')
+    plt.ylabel('velocity, mm/mus')
+    plt.show()
+    #if units is not None:
+    #    u = pochoir.arrays.fromstr1(units)
+    #    mag = mag/u
+    #title = f'{array}'
+    #if units:
+    #    title += f' [{units}]'
+    #pochoir.plots.image(mag, output, dom, title)
 
 
 @cli.command("plot-quiver")
@@ -711,9 +1429,37 @@ def plot_drift(ctx, trajectory, paths, output):
         pochoir.plots.drift2d(arr, output, dom, trajectory)
         return
     if arr.shape[-1] == 3:
-        pochoir.plots.drift3d(arr, output, dom, trajectory)
+        pochoir.plots.drift3d(arr, output, dom, trajectory,gif)
     click.echo(f'unsupported array of shape {arr.shape}')
     return -1
+
+@cli.command("plot-drift3d")
+@click.option("-t", "--trajectory", type=int, default=-1,
+              help="Number of trajectories to plot (def: plot only traj 0)")
+@click.option("-p", "--paths", type=str,
+              help="The paths array to plot")
+@click.option("-b", "--boundary", type=str,
+              help="boundary array")
+@click.option("-z", "--zoom", default="no", type=click.Choice(["yes","no"]),
+              help="boundary array")
+@click.option("-g", "--gif",
+              default="no", type=click.Choice(["yes","no"]),
+              help="create gif image ")
+@click.option("-o", "--output",
+              type=click.Path(exists=False, dir_okay=False),
+              help="Output graphics file")
+@click.pass_context
+def plot_drift3d(ctx, trajectory, paths,boundary,zoom,gif, output):
+    '''
+    '''
+    barr, mdb = ctx.obj.get(boundary, True)
+    arr, md = ctx.obj.get(paths, True)
+    domain = md.get("domain")
+    dom = None
+    if domain:
+        dom = ctx.obj.get_domain(domain)
+    title = f'{paths}'
+    pochoir.plots.drift3d_b(arr,barr, output, dom, trajectory,zoom,gif,title)
 
 
 @cli.command("export-vtk-image")

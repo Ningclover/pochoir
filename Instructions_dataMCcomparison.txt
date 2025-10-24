@@ -1,0 +1,11 @@
+To compare FR between data and MC :
+
+1) Find a straight track with reasonable angle to anode plane in data and simulate exactly (same angle, same distance to anode, same length) through WCWC. Now just look at some metrics like comparing raw WF on several vires, average WF, deconvolved charge between palnes.
+
+Extend it to many angles and large statistics
+
+2) Find blips of enarge from Ar do a salection and simulate similar things. Compare average WF
+
+
+
+If things are different (but transparency condition is 100%) most likely drift velocity is off. That means poor choice of cathode voltage or argon temperature. One can just play with temperature to get exact velocity needed , no reason to resimulate whole drift volume (https://lar.bnl.gov/properties/)

@@ -1,0 +1,129 @@
+there are multiple steps of running. Overall one needs to: 
+1)produce 3D drift field in a small volume 
+2)2D weighting field in large volume 
+3)use 2D wfield as boundary to get 3D weighting field in a smaller volume
+4)using 3D drift field produce velocity map, set electron starting points and drift them
+5)produce large 3D weighting field by combining 3D and 2D versions
+6)produce current in large 3D weighting field by coping paths in smaller volume around (symmetries are important)
+7)use full path map in large volume to get currents
+8)repeat for 3 (or any) planes and pack it in jsonnet for WC (or any format you want)
+
+
+How package does those things : 
+
+example in test-full-3d.sh
+1) one needs to choose domain by choosing step size and number of points in x,y,z directions  
+
+do_domain () {
+    local name=$1 ; shift
+    local shape=$1; shift
+    local spacing=$1; shift
+
+    want domain/$name \
+         pochoir domain --domain domain/$name \
+         --shape=$shape --spacing $spacing
+}
+do_domain drift3d  25,17,2000  '0.1*mm'
+
+# fixme: these weight* identifiers need to split up for N planes.
+do_domain weight2d 1092,2000   '0.1*mm'
+do_domain weight3d 350,32,2000 '0.1*mm'
+
+
+2)Generate a geometry. This step is highly dependent on what geometry you want and usually requires coding it 
+
+do_gen () {
+    local name=$1 ; shift
+    local geom=$1; shift
+    local gen="pcb_$geom"
+    local cfg="example_gen_pcb_${geom}_config.json"
+
+    want initial/$name \
+         pochoir gen --generator $gen --domain domain/$name \
+         --initial initial/$name --boundary boundary/$name \
+         $cfg
+
+}
+do_gen drift3d quarter
+do_gen weight2d 2D
+do_gen weight3d 3D
+
+
+From the example above one needs a generator and config files. generator file in python script and the live in main director. cfg files are in test directory and one can write their own matching generator they have
+
+3)Run FDM. This is most time consuming step, make sure it runs on GPU (should be automatic if engine is set to torch, but if you PyTorch sees only CPU it will use only CPU, double check). Each command has number of epochs (aka 10 in example) and generally you need just 1; number of steps per epoch (20000 or 9000) whose you need in millions range to get reasonable result, to estimate it one have to look at the result and see if for example for collection plane current is actually summed up to one so whole volume got calculate, also one can look at the volume plot and see if there are any gaps -> highly dependent on volume and step; last entry are boundary conditions for x,y,z they can be fixed or periodic make sure to choose once you want for your case as it can be different based on geometry choices, for weighting field though they are generally fixed
+
+weighting field specifically has parameter bc-interp --xcoord '17.5*mm' that tells the code there to stitch 2D to 3D and this one would depend on geoemtry and you spesific coded generator
+
+do_fdm () {
+    local name=$1 ; shift
+    local nepochs=$1 ; shift
+    local epoch=$1 ; shift
+    local prec=$1 ; shift
+    local edges=$1 ; shift
+
+    want potential/$name \
+         pochoir fdm \
+         --nepochs $nepochs --epoch $epoch --precision $prec \
+         --edges $edges \
+         --engine torch \
+         --initial initial/$name --boundary boundary/$name \
+         --potential potential/$name \
+         --increment increment/$name
+}
+do_fdm drift3d  10      20000      0.00002     fix,fix,fix
+do_fdm weight2d 10      20000      0.0002   per,fix
+
+
+# special step to form iva/bva from 2D solution
+want initial/weight3dfull \
+     pochoir bc-interp --xcoord '17.5*mm' \
+     --initial initial/weight3dfull --boundary boundary/weight3dfull \
+     --initial3d initial/weight3d --boundary3d boundary/weight3d \
+     --potential2d potential/weight2d
+
+do_fdm weight3dfull 10      9000      0.00002     fix,fix,fix
+
+
+4) Calculate velocity based on drift field 
+
+
+want velocity/drift3d \
+     pochoir velo --temperature '89*K' \
+     --potential potential/drift3d \
+     --velocity velocity/drift3d
+
+5) Set drift starting points and calculate drift in small volume 
+
+want velocity/drift3d \
+     pochoir velo --temperature '89*K' \
+     --potential potential/drift3d \
+     --velocity velocity/drift3d
+
+#rm -r /Users/sergey/Desktop/ICARUS/LArStand/pochoir/test/store/starts
+
+want starts/drift3d \
+    pochoir starts --starts starts/drift3d \
+    '0.05*mm,0.05*mm,198*mm' 
+
+want paths/drift3d \
+     pochoir drift --starts starts/drift3d \
+     --velocity velocity/drift3d \
+     --paths paths/drift3d '0*us,4250*us,0.1*us'
+    #--paths paths/drift3d '0*us,4250*us,0.1*us'
+
+
+Example in 3view_chain_coll.sh
+6) Get full extended weighting field 
+
+pochoir extendwf -p store/potential/weight2d -P store/potential/weight3dfull -n 10 -o store/potential/weight3dextend
+
+7) Induce current from paths 
+
+pochoir induce -w store/potential/weight3dextend -p store/paths/drift3d -a 11 -n 21 -O store/current/induced_current_avg_coll_ext
+
+
+8) get current from 3 planes int WC format 
+
+pochoir convertfr -u store/all_currents/induced_current_avg_ind1_ext -v store/all_currents/induced_current_avg_ind2_ext -w store/all_currents/induced_current_avg_coll_ext -O store/all_currents/FR_HigherV_89K.json.bz2 example_converter_config_30deg.json
+
