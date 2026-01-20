@@ -128,10 +128,10 @@ def draw_3D_pcb(arr,shape,r1,r2,z_l,v_ind1,v_ind2,v_coll,v_cath,pcb_width):
     draw_pcb_plane(shape,arr,z_l+pcb_width+200,r1,r2,0,(0,v_ind1))
     draw_pcb_plane(shape,arr,z_l+2*pcb_width+200,r1,r2,0,(0,-1500))
     draw_pcb_plane(shape,arr,shape[2]-1,r1,r2,1,(v_cath,0))
-    print("shape: ",shape[2]-1)
     draw_pcb_plane(shape,arr,0,r1,r2,1,(0,0))
 
 def generator(dom, cfg):
+    
     r1 = int(round(cfg['FirstHoleRadius']/dom.spacing[0])-1)
     r2 = int(round(cfg['SecondHoleRadius']/dom.spacing[0])-1)
     pcb_width = int(cfg['PcbWidth']/dom.spacing[2])
@@ -141,7 +141,6 @@ def generator(dom, cfg):
     induction1Potential = cfg['Induction1Potential']
     induction2Potential = cfg['Induction2Potential']
     cathodePotential = cfg['CathodePotential']
-    print(induction1Potential,induction2Potential)
     
     arr = numpy.zeros(dom.shape)
     barr = numpy.ones(dom.shape)

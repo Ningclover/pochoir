@@ -21,11 +21,11 @@ def stencil_numba2d_jit(arr, out):
         
 @cuda.jit
 def stencil_numba3d_jit(arr, out):
-    i, j, k = cuda.grid(2)
+    i, j, k = cuda.grid(3)  # Fixed: 3D grid needs cuda.grid(3)
     l, n, m = arr.shape
     if 1 <= i < l - 1 and 1 <= j < n - 1 and 1 <= k < m - 1:
         out[i, j, k] = (1/6.0)*(
-            arr[i-1, j, k] + arr[i, j-1, k] + arr[i, j, k-1] +  
+            arr[i-1, j, k] + arr[i, j-1, k] + arr[i, j, k-1] +
             arr[i+1, j, k] + arr[i, j+1, k] + arr[i, j, k+1])
 
 
@@ -40,7 +40,9 @@ def stencil(arr, out):
         stencil_numba2d_jit[blockspergrid, threadsperblock](arr, out)
         return
 
-    threadsperblock = (16, 16, 16)
+    # Use 8x8x16 = 1024 threads (max for most GPUs)
+    # Z dimension gets more threads since it's the largest (2100)
+    threadsperblock = (8, 8, 16)
     blockspergrid_x = math.ceil(arr.shape[0] / threadsperblock[0])
     blockspergrid_y = math.ceil(arr.shape[1] / threadsperblock[1])
     blockspergrid_z = math.ceil(arr.shape[2] / threadsperblock[2])
@@ -59,7 +61,7 @@ def solve(iarr, barr, periodic, prec, epoch, nepochs,
     iarr_pad = cupy.pad(cupy.array(iarr), 1)
     barr_pad = cupy.pad(cupy.array(barr), 1)
     bi_pad = cupy.pad(cupy.array(iarr*barr), 1)
-    mutable_pad = cupy.pad(cupy.invert(cupy.array(barr)), 1)
+    mutable_pad = cupy.pad(cupy.invert(cupy.array(barr).astype(bool)), 1)
 
     tmp_pad = cupy.zeros_like(iarr_pad)
 
@@ -69,29 +71,44 @@ def solve(iarr, barr, periodic, prec, epoch, nepochs,
     core = arrays.core_slices1(iarr_pad)
 
     prev = None
+    check_interval = 100  # Measure convergence over last 100 iterations
+    max_change_in_epoch = 0.0
+
     for iepoch in range(nepochs):
         print(f'epoch: {iepoch}/{nepochs} x {epoch}')
 
         for istep in range(epoch):
-            #print(f'step: {istep}/{epoch}')
-            if epoch-istep == 1: # last in the epoch
-                prev = cupy.array(iarr_pad)
+            # Save state 100 iterations before the end
+            if epoch - istep == check_interval:
+                prev = iarr_pad[core].copy()
 
             stencil(iarr_pad, tmp_pad)
 
-            iarr_pad = bi_pad + mutable_pad*tmp_pad
+            iarr_pad[:] = bi_pad + mutable_pad*tmp_pad  # Use in-place update
             edge_condition(iarr_pad, *periodic)
-            
-            if epoch-istep == 1: # last in the epoch
-                err = iarr_pad - prev
-                maxerr = cupy.max(cupy.abs(err))
-                #print(f'maxerr: {maxerr}')
-                if prec and maxerr < prec:
-                    print(f'fdm reach max precision: {prec} > {maxerr}')
-                    return (iarr_pad[core], err[core])
 
-    print(f'fdm reach max epoch {epoch} x {nepochs}, last prec {prec} < {maxerr}')
-    res = (iarr_pad[core], err[core])
-    return tuple([r.get() for r in res])
+        # Compute change over last 100 iterations
+        if prev is not None:
+            err = iarr_pad[core] - prev
+            maxerr = cupy.max(cupy.abs(err))
+            meanerr = cupy.mean(cupy.abs(err))
+            max_change_in_epoch = float(maxerr)
+            print(f'  last {check_interval} iters - maxerr: {maxerr:.6e}, meanerr: {meanerr:.6e}')
+
+            if prec and maxerr < prec :
+                print(f'fdm reach max precision: {prec } > {maxerr} (over {check_interval} iters)')
+                res = (iarr_pad[core], err)
+                return tuple([r.get() for r in res])
+        else:
+            print(f'  (convergence check not available yet)')
+
+    print(f'fdm reach max epoch {epoch} x {nepochs}, last prec {prec } < {max_change_in_epoch}')
+    if prev is not None:
+        res = (iarr_pad[core], err)
+        return tuple([r.get() for r in res])
+    else:
+        # Fallback for very small epochs
+        res = (iarr_pad[core], cupy.zeros_like(iarr_pad[core]))
+        return tuple([r.get() for r in res])
 
 

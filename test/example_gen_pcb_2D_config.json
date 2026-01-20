@@ -1,9 +1,10 @@
 {
     "plane" : 0,
     "config" : 1,
-    "StripWidthX" : 5.0,
-    "StripWidthZ" : 3.3,
-    "HoleDiameter" : 2.5,
-    "LowEdgePosition" : 10,
+    "StripWidthX" : 5.1,
+    "StripWidthZ" : 3.2,
+    "HoleDiameter" : 2.4,
+     "BetweenHoles" : 1.35,
+    "LowEdgePosition" : 17,
     "Nstrips" : 21
 }

@@ -44,8 +44,9 @@ def interp(sol2D, arr3D, barr3D, dom2D,dom3D, xcoord):
             arr3D[-1,j,:]=func_interp(points3D_f)
     #Need to add 2D as a boundary at Z=100mm to make "faster" calculations
     for j in range(dom3D.shape[1]):
-        arr3D[:,j,-1]=sol2D[1071:2142,1600]
+        arr3D[:,j,-1]=sol2D[532:532*2,1100]
     barr3D[:,:,-1]=1
+    # print(arr3D.shape)
     
 
     return arr3D,barr3D

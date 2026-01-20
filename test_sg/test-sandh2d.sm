@@ -1,0 +1,238 @@
+#!/usr/bin/env snakemake
+# -*- snakemake -*-
+
+# run from test/ directory
+
+store="test-sandh2d-store"
+plots="test-sandh2d-plots"
+
+DOMAINS = ['drift', 'width']
+# fixme: generate fdm as .json config...
+FIELDS = {
+    'weight-ind': {
+        "domain": "weight",
+        "fdm": dict(
+            nepochs = 100,
+            epoch = 100,
+            prec = 0.01,
+            edges = "fixed,periodic"
+        ),
+    },
+    'weight-col': {
+        "domain": "weight",
+    },
+    'drift': {
+        "domain": "drift",
+    }
+}
+
+
+WFIELDS = [n for n,d in FIELDS.items() if d['domain'] == 'weight']
+DFIELDS = [n for n,d in FIELDS.items() if d['domain'] == 'drift']
+
+TAXONS = ['initial', 'boundary', 'potential', 'increment']
+VALUE_TAXONS = ['initial', 'potential', 'increment']
+
+
+# drift_domain = f'{store}/domains/drift.json',
+# weight_domain = f'{store}/domains/weight.json',
+# drift_cfg = f'{store}/gencfg/drift.json',
+# wcol_cfg = f'{store}/gencfg/weight-col.json',
+# wind_cfg = f'{store}/gencfg/weight-ind.json',
+# starts_cfg = f'{store}/gencfg/starts.json'
+
+rule configs:
+    input:
+        "test-sandh2d.jsonnet"
+    output:
+        f'{store}/gencfg.lst',
+    shell: '''
+    pochoir gencfg -o {output} -m {store} {input}
+    '''
+
+
+def domain_file(w):
+    pat = '{store}/domains/{domain}.json'
+    return pat.format(store=store, **FIELDS[w.field])
+def field_file(w):
+    pat = '{store}/gencfg/{field}.json'
+    return pat.format(store=store, field=w.field)
+def field_data(w):
+    fname = field_file(w)
+    return json.loads(open(fname).read())['fdm']
+def starts_file(w):
+    pat = '{store}/gencfg/starts.json'
+    return pat.format(store=store, field=w.field)
+def starts_data(w):
+    fname = starts_file(w)
+    starts = json.loads(open(fname).read())
+    return ' '.join([','.join(map(str,s)) for s in starts])
+
+
+rule gen:
+    input:
+        domain = domain_file,
+        field = field_file
+    output:
+        iva = f'{store}/initial/{{field}}.npz',
+        bva = f'{store}/boundary/{{field}}.npz'
+    shell: '''
+    pochoir --store {store} \
+    gen --generator sandh2d --domain {input.domain} \
+    --initial {output.iva} \
+    --boundary {output.bva} \
+    {input.field}
+    '''
+
+rule fdm:
+    input:
+        cfg = domain_file,
+        iva = f'{store}/initial/{{field}}.npz',
+        bva = f'{store}/boundary/{{field}}.npz'
+    output:
+        pot = f'{store}/potential/{{field}}.npz',
+        inc = f'{store}/increment/{{field}}.npz'
+    params:
+        p = field_data,
+        engine = "numpy"
+    shell: '''
+    pochoir --store {store} \
+    fdm --engine {params.engine} \
+    --nepochs {params.p[nepochs]} --epoch {params.p[epoch]} \
+    --precision {params.p[prec]} --edges {params.p[edges]} \
+    --initial {input.iva} --boundary {input.bva} \
+    --potential {output.pot} --increment {output.inc}
+    '''
+
+rule field_grad:
+    input:
+        f'{store}/potential/{{field}}.npz'
+    output:
+        arr = f'{store}/potential/{{field}}-mag.npz',
+        plt = f'{plots}/potential/{{field}}-mag.png'
+    shell: '''
+    pochoir --store {store} grad -s {input} -G {output.arr}; \
+    pochoir --store {store} plot-mag -u 'V/cm' -a {output.arr} -o {output.plt}
+    '''
+
+rule plots_linear:
+    input:
+        f'{store}/{{taxon}}/{{field}}.npz'
+    output:
+        f'{plots}/{{taxon}}/{{field}}-linear.png'
+    shell: '''
+    pochoir --store {store} plot-image -s linear -a {input} -o {output}
+    '''
+
+rule plots_signedlog:
+    input:
+        f'{store}/{{taxon}}/{{field}}.npz'
+    output:
+        f'{plots}/{{taxon}}/{{field}}-signedlog.png'
+    shell: '''
+    pochoir --store {store} plot-image -s signedlog -a {input} -o {output}
+    '''
+
+rule velo:
+    input:
+        f'{store}/potential/{{field}}.npz'
+    output:
+        f'{store}/velocity/{{field}}.npz'
+    params:
+        temperature = '89*K'
+    shell: """
+    pochoir --store {store}  velo \
+    --temperature {params.temperature} \
+     --potential {input} \
+     --velocity {output}
+    """
+
+rule plot_velo:
+    input:
+        f'{store}/velocity/{{field}}.npz'            
+    output:
+        quiver = f'{plots}/velocity/{{field}}-quiver.png',
+        mag = f'{plots}/velocity/{{field}}-mag.png'
+    shell: '''
+    pochoir --store {store} plot-quiver \
+        --scale 10000000.0 \
+        --ylim '15,22' \
+        -a {input} -o {output.quiver}; \
+    pochoir --store {store} plot-mag \
+        -a {input} -o {output.mag} -u "mm/us"
+    '''
+
+
+rule starts:
+    input:
+        starts_file
+    output:
+        f'{store}/starts/{{field}}.npz'
+    params:
+        starts = starts_data
+    shell: '''
+    pochoir --store {store} starts --starts {output} {params.starts}
+    '''
+
+rule drift:
+    input:
+        arr = f'{store}/velocity/{{field}}.npz',
+        starts = f'{store}/starts/{{field}}.npz'
+    output:
+        paths = f'{store}/paths/{{field}}.npz'
+    params:
+        steps = '0*us,200*us,0.1*us'
+    shell: '''
+    pochoir --store {store} drift --engine numpy --starts {input.starts} \
+    --velocity {input.arr} --paths {output.paths} {params.steps}
+    '''
+    
+rule plot_drift:
+    input:
+        f'{store}/paths/{{field}}.npz'
+    output:
+        f'{plots}/paths/{{field}}.png'
+    shell: '''
+    pochoir --store {store} plot-drift -p {input} -o {output}
+    '''
+
+# fixme: label for "paths" here should really be outer product of many
+# things.
+rule induce:
+    input:
+        paths = f'{store}/paths/drift.npz',
+        weighting= f'{store}/potential/{{field}}.npz'
+    output:
+        f'{store}/current/{{field}}.npz',
+    shell: '''
+    pochoir --store {store} induce \
+    --weighting {input.weighting}  --paths {input.paths} \
+    --output {output}
+    '''
+
+
+def all_rule():
+    return (rules.configs.output,
+            expand(rules.gen.output,
+                   domain=["drift"], field=DFIELDS),
+            expand(rules.gen.output,
+                   domain=["weight"], field=WFIELDS),
+            expand(rules.fdm.output, field=FIELDS),
+            expand(rules.plots_linear.output,
+                   field=FIELDS, taxon=TAXONS),
+            expand(rules.plots_signedlog.output,
+                   field=FIELDS, taxon=VALUE_TAXONS),
+            expand(rules.field_grad.output,
+                   field=["drift"]),
+            expand(rules.velo.output, field=["drift"]),
+            expand(rules.plot_velo.output, field=["drift"]),
+            expand(rules.drift.output, field=["drift"]),
+            expand(rules.plot_drift.output, field=["drift"]),
+            expand(rules.induce.output,
+                   field=['weight-ind', 'weight-col']),
+            )
+
+
+rule all:
+    input: all_rule()
+

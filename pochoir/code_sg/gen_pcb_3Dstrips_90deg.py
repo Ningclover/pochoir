@@ -25,22 +25,18 @@ def draw_3Dstrips(arr,barr,qbarr_4,Nstrips,pcb_low_edge,pcb_width,plane):
         barr[s*shape[0]:(s+1)*shape[0],shape[1]:2*shape[1],pcb_low_edge] = qbarr_4[:,:,0]
         barr[(s+1)*shape[0]:(s+2)*shape[0],0:shape[1],pcb_low_edge] = qbarr_4[:,:,0]
         barr[(s+1)*shape[0]:(s+2)*shape[0],shape[1]:2*shape[1],pcb_low_edge] = qbarr_1[:,:,0]
-
         barr[s*shape[0]:(s+1)*shape[0],0:shape[1],pcb_low_edge+pcb_width] = qbarr_1[:,:,0]
         barr[s*shape[0]:(s+1)*shape[0],shape[1]:2*shape[1],pcb_low_edge+pcb_width] = qbarr_4[:,:,0]
         barr[(s+1)*shape[0]:(s+2)*shape[0],0:shape[1],pcb_low_edge+pcb_width] = qbarr_4[:,:,0]
         barr[(s+1)*shape[0]:(s+2)*shape[0],shape[1]:2*shape[1],pcb_low_edge+pcb_width] = qbarr_1[:,:,0]
-
         barr[s*shape[0]:(s+1)*shape[0],0:shape[1],pcb_low_edge+pcb_width+200] = qbarr_1[:,:,0]
         barr[s*shape[0]:(s+1)*shape[0],shape[1]:2*shape[1],pcb_low_edge+pcb_width+200] = qbarr_4[:,:,0]
         barr[(s+1)*shape[0]:(s+2)*shape[0],0:shape[1],pcb_low_edge+pcb_width+200] = qbarr_4[:,:,0]
         barr[(s+1)*shape[0]:(s+2)*shape[0],shape[1]:2*shape[1],pcb_low_edge+pcb_width+200] = qbarr_1[:,:,0]
-
         barr[s*shape[0]:(s+1)*shape[0],0:shape[1],pcb_low_edge+2*pcb_width+200] = qbarr_1[:,:,0]
         barr[s*shape[0]:(s+1)*shape[0],shape[1]:2*shape[1],pcb_low_edge+2*pcb_width+200] = qbarr_4[:,:,0]
         barr[(s+1)*shape[0]:(s+2)*shape[0],0:shape[1],pcb_low_edge+2*pcb_width+200] = qbarr_4[:,:,0]
         barr[(s+1)*shape[0]:(s+2)*shape[0],shape[1]:2*shape[1],pcb_low_edge+2*pcb_width+200] = qbarr_1[:,:,0]
-        
     arr[(Nstrips-1)*shape[0]:Nstrips*shape[0],0:shape[1],pcb_low_edge] = qbarr_1[:,:,0]
     arr[(Nstrips-1)*shape[0]:Nstrips*shape[0],shape[1]:2*shape[1],pcb_low_edge] = qbarr_4[:,:,0]
     arr[Nstrips*shape[0]:(Nstrips+1)*shape[0],0:shape[1],pcb_low_edge] = qbarr_4[:,:,0]

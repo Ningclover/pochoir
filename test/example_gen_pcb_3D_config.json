@@ -1,10 +1,10 @@
 {
     "plane" : 0,
-    "FirstHoleRadius" : 1.25,
-    "SecondHoleRadius" : 1.25,
-    "PcbWidth" : 3.3,
+    "FirstHoleRadius" : 1.2,
+    "SecondHoleRadius" : 1.2,
+    "PcbWidth" : 3.2,
     "PcbLowEdgePosition" : 17,
     "Nstrips" : 7,
-    "QuarterDimX" : 2.5,
-    "QuarterDimY" : 1.7
+    "QuarterDimX" : 2.55,
+    "QuarterDimY" : 1.45
 }

@@ -413,9 +413,11 @@ def velo(ctx, temperature, potential, velocity,dl_key,dt_key):
     speed_unit = units.mm/units.us
     speed_z = varr[2][:,:,:]/speed_unit
     #Draw for PCB
-    x = numpy.linspace(0,420,4200)
-    for i in range(0,25):
-        for j in range(0,17):
+    # Dynamically calculate x-axis based on actual domain Z dimension
+    z_length_mm = dom.shape[2] * dom.spacing[2]
+    x = numpy.linspace(0, z_length_mm, dom.shape[2])
+    for i in range(0,dom.shape[0]):
+        for j in range(0,dom.shape[1]):
             plt.plot(x,speed_z[i,j,:])
             #if i==10 and j==8:
             #    for l in range(1,len(x)-1):
@@ -638,7 +640,7 @@ def extendwf(ctx,
     import numpy
     #at the moment assume that 2d and 3d simulations have same properties with some magic numbers (including shifts in 2D solution)
     #NEEDS FIX for better calculation
-    cut_z=1600 #this is the number we cut 3Dweight sim along drift
+    cut_z=1100 #this is the number we cut 3Dweight sim along drift
     horizontal = "yes"
     if horizontal=="yes":
         onestrip = dom3D.shape[0]/7.0
@@ -650,7 +652,7 @@ def extendwf(ctx,
                     arr[i,j,:] = sol2D[i,:]
             if i>=onestrip*7 and i<onestrip*14:
                 for j in range(0,dom3D.shape[1]):
-                    arr[i,j,:cut_z] = sol3D[i-dom3D.shape[0],j,:]
+                    arr[i,j,:cut_z] = sol3D[i-dom3D.shape[0],j,:cut_z]
                     arr[i,j,cut_z:] = sol2D[i,cut_z:]
             if i>=onestrip*14:
                 for j in range(0,dom3D.shape[1]):
@@ -668,7 +670,7 @@ def extendwf(ctx,
    #     arr[:,i,int(dom3D.shape[2]+3)]=(sol3D[:,i,int(dom3D.shape[2]-1)]+arr[:,i,int(dom3D.shape[2]+3)])/2
    #     arr[:,i,int(dom3D.shape[2]+4)]=(sol3D[:,i,int(dom3D.shape[2]-1)]+arr[:,i,int(dom3D.shape[2]+4)])/2
     print("final domain:",arr.shape)
-    dom = pochoir.domain.Domain(arr.shape, 0.05, [0.0,0.0,0.0])
+    dom = pochoir.domain.Domain(arr.shape, 0.1, [0.0,0.0,0.0])
     domain = "domain/weight3dextend"
     ctx.obj.put_domain(domain, dom)
     params = dict(command="extendwf",domain=domain,
@@ -770,13 +772,13 @@ def induce(ctx, charge, weighting, paths, average,nstrips, output):
         shifted_paths=numpy.array(shifted_paths)
     print("TotalPaths=",len(shifted_paths))
     Q = charge * rgi(shifted_paths) #/ units.V
-    print(wpot[325+714,14,340],wpot[325+714,15,340],wpot[326+714,14,340],wpot[325+714,15,340])
+    #print(wpot[325+714,14,340],wpot[325+714,15,340],wpot[326+714,14,340],wpot[325+714,15,340])
     assert len(Q.shape) == 2
     #assert Q.shape[0] == npaths
     assert Q.shape[1] == nsteps
     numpy.set_printoptions(threshold=sys.maxsize)
-    for i in range(0,len(shifted_paths[644])):
-        print(shifted_paths[699][i],shifted_paths[698][i],Q[699,i],Q[698,i])
+    #for i in range(0,len(shifted_paths[644])):
+    #    print(shifted_paths[699][i],shifted_paths[698][i],Q[699,i],Q[698,i])
 
 
     dQ = Q[:, 1:] - Q[:, :-1]

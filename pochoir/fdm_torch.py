@@ -42,7 +42,7 @@ def solve(iarr, barr, periodic, prec, epoch, nepochs):
     err = None
 
     bi_core = torch.tensor(iarr*barr, requires_grad=False)
-    mutable_core = torch.tensor(numpy.invert(barr), requires_grad=False)
+    mutable_core = torch.tensor(numpy.invert(barr.astype(bool)), requires_grad=False)
     tmp_core = torch.zeros(iarr.shape, requires_grad=False)
 
     barr_pad = torch.tensor(numpy.pad(barr, 1), requires_grad=False)
@@ -52,24 +52,39 @@ def solve(iarr, barr, periodic, prec, epoch, nepochs):
     # Get indices of fixed boundary values and values themselves
 
     prev = None
+    check_interval = 100  # Measure convergence over last 100 iterations
+
     for iepoch in range(nepochs):
         print(f'epoch: {iepoch}/{nepochs} x {epoch}')
+        max_change_in_epoch = 0.0
+
         for istep in range(epoch):
-            #print(f'step: {istep}/{epoch}')
-            if epoch-istep == 1: # last in the epoch
-                prev = iarr_pad.clone().detach().requires_grad_(False)
+            # Save state 100 iterations before the end
+            if epoch - istep == check_interval:
+                prev = iarr_pad[core].clone().detach().requires_grad_(False)
 
             stencil(iarr_pad, tmp_core)
             iarr_pad[core] = bi_core + mutable_core*tmp_core
             edge_condition(iarr_pad, *periodic)
-            
-            if epoch-istep == 1: # last in the epoch
-                err = iarr_pad[core] - prev[core]
-                maxerr = torch.max(torch.abs(err))
-                #print(f'maxerr: {maxerr}')
-                if prec and maxerr < prec:
-                    print(f'fdm reach max precision: {prec} > {maxerr}')
-                    return (iarr_pad[core], err)
-    print(f'fdm reach max epoch {epoch} x {nepochs}, last prec {prec} < {maxerr}')
-    return (iarr_pad[core], err)
+
+        # Compute change over last 100 iterations
+        if prev is not None:
+            err = iarr_pad[core] - prev
+            maxerr = torch.max(torch.abs(err))
+            meanerr = torch.mean(torch.abs(err))
+            max_change_in_epoch = maxerr
+            print(f'  last {check_interval} iters - maxerr: {maxerr:.6e}, meanerr: {meanerr:.6e}')
+
+            if prec and maxerr < prec * check_interval:
+                print(f'fdm reach max precision: {prec * check_interval} > {maxerr} (over {check_interval} iters)')
+                return (iarr_pad[core], err)
+        else:
+            print(f'  (convergence check not available yet)')
+
+    print(f'fdm reach max epoch {epoch} x {nepochs}, last prec {prec * check_interval} < {max_change_in_epoch}')
+    if prev is not None:
+        return (iarr_pad[core], err)
+    else:
+        # Fallback for very small epochs
+        return (iarr_pad[core], torch.zeros_like(iarr_pad[core]))
 

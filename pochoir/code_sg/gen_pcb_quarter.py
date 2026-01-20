@@ -118,35 +118,45 @@ def draw_pcb_plane(shape,arr,z,r1,r2,free,val):
         fill_area(arr,barr1,val[0])
         fill_area(arr,barr2,val[0])
 
-def draw_3D_pcb(arr,shape,r1,r2,z_l,v_ind1,v_ind2,v_coll,v_cath,pcb_width):
-    
-    
-    for z in range(shape[2]-1)[1:-2]:
-       draw_pcb_plane(shape,arr,z,r1,r2,1,(0,0))
+def draw_3D_pcb(arr,shape,r1,r2,z_l,v_cath,v_coll,v_ind,v_an,pcb_width):
+
+    for z in range(shape[2]-1)[1:]:
+        if z<z_l+pcb_width and z>z_l:
+            draw_pcb_plane(shape,arr,z,r1,r2,1,(0,v_ind))#change r2,0 to r2,1 to make nothing between plates
+        else:
+            draw_pcb_plane(shape,arr,z,r1,r2,1,(0,0))
     draw_pcb_plane(shape,arr,z_l,r1,r2,0,(0,v_coll))
-    draw_pcb_plane(shape,arr,z_l+pcb_width,r1,r2,0,(0,v_ind2))
-    draw_pcb_plane(shape,arr,z_l+pcb_width+200,r1,r2,0,(0,v_ind1))
-    draw_pcb_plane(shape,arr,z_l+2*pcb_width+200,r1,r2,0,(0,-1500))
-    draw_pcb_plane(shape,arr,shape[2]-1,r1,r2,1,(v_cath,0))
-    print("shape: ",shape[2]-1)
-    draw_pcb_plane(shape,arr,0,r1,r2,1,(0,0))
+    draw_pcb_plane(shape,arr,shape[2]-1,r1,r2,1,(v_an,0))
+    draw_pcb_plane(shape,arr,0,r1,r2,1,(v_cath,0))
 
 def generator(dom, cfg):
-    r1 = int(round(cfg['FirstHoleRadius']/dom.spacing[0])-1)
-    r2 = int(round(cfg['SecondHoleRadius']/dom.spacing[0])-1)
-    pcb_width = int(cfg['PcbWidth']/dom.spacing[2])
-    pcb_low_edge = int(cfg['PcbLowEdgePosition']/dom.spacing[2])
-    print(r1,r2,pcb_low_edge,pcb_width)
+    
+    r1 = int(cfg['FirstHoleRadius']/dom.spacing[0]-1)
+    r2 = int(cfg['SecondHoleRadius']/dom.spacing[0]-1)
+    pcb_width = int(cfg['PcbWidth']/dom.spacing[0])
+    pcb_low_edge = int(cfg['PcbLowEdgePosition']/dom.spacing[0])
+    print(r1,r2,pcb_width,pcb_low_edge)
     collectionPotential = cfg['CollectionPotential']
-    induction1Potential = cfg['Induction1Potential']
-    induction2Potential = cfg['Induction2Potential']
+    inductionPotential = cfg['InductionPotential']
     cathodePotential = cfg['CathodePotential']
-    print(induction1Potential,induction2Potential)
+    anodePotential = cfg['AnodePotential']
     
     arr = numpy.zeros(dom.shape)
-    barr = numpy.ones(dom.shape)
-    draw_3D_pcb(arr,dom.shape,r1,r2,pcb_low_edge,-1,-1,-1,-1,pcb_width)
-    barr[arr == 0] = 0
-    draw_3D_pcb(arr,dom.shape,r1,r2,pcb_low_edge,induction1Potential,induction2Potential,collectionPotential,cathodePotential,pcb_width)
-
+    barr = numpy.zeros(dom.shape)
+    draw_pcb_plane(dom.shape,arr,pcb_low_edge,r1,r2,0,(0,collectionPotential))
+    draw_pcb_plane(dom.shape,arr,pcb_low_edge+pcb_width,r1,r2,0,(0,inductionPotential))
+    arr[:,:,-1]=anodePotential
+    arr[:,:,0]=cathodePotential
+    draw_pcb_plane(dom.shape,barr,pcb_low_edge,r1,r2,0,(0,1))
+    draw_pcb_plane(dom.shape,barr,pcb_low_edge+pcb_width,r1,r2,0,(0,1))
+    barr[:,:,-1]=1
+    barr[:,:,0]=1
+    #barr = numpy.ones(dom.shape)
+    #draw_3D_pcb(arr,dom.shape,r1,r2,pcb_low_edge,-1,collectionPotential,-1,anodePotential,pcb_width)
+    #draw_pcb_plane(dom.shape,arr,pcb_low_edge+pcb_width-1,r1,r2,0,(0,-1))
+    #barr[arr == 0] = 0
+    #draw_3D_pcb(arr,dom.shape,r1,r2,pcb_low_edge,cathodePotential,collectionPotential,inductionPotential,anodePotential,pcb_width)
+    #barr[:,:,170] = 1
+    #arr[:,:,170] = 2000
+    #barr[:,:,0] = 1
     return arr,barr

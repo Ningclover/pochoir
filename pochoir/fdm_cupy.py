@@ -39,7 +39,7 @@ def solve(iarr, barr, periodic, prec, epoch, nepochs,
     barr = cupy.array(barr)
 
     bi_core = cupy.array(iarr*barr)
-    mutable_core = cupy.invert(barr)
+    mutable_core = cupy.invert(barr.astype(bool))
     tmp_core = cupy.zeros(iarr.shape)
 
     err = cupy.zeros_like(iarr)

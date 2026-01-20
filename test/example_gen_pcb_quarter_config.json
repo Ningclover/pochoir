@@ -3,7 +3,7 @@
     "SecondHoleRadius" : 1.25,
     "PcbWidth" : 3.2,
     "PcbLowEdgePosition" : 24,
-    "CollectionPotential" : 2000,
+    "CollectionPotential" : 1000,
     "InductionPotential" : 0,
     "CathodePotential" : 0,
     "AnodePotential" : -50

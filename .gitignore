@@ -12,5 +12,8 @@ __pycache__
 notes.*
 *.hdf
 store
+store*
 .snakemake
-
+*ipynb*
+*.md
+py-torch-env/
