@@ -65,8 +65,8 @@ do_gen_w () {
 
 }
 
-# do_gen_w weight2d_w 2D
-# do_gen_w weight3d_w 3D
+do_gen_w weight2d_w 2D
+do_gen_w weight3d_w 3D
 
 ## Fields
 do_fdm () {
@@ -86,10 +86,10 @@ do_fdm () {
          --increment increment/$name
 }
 
-# do_fdm drift3d  20      200000      0.00000005     fix,fix,fix
-# do_fdm weight2d_u 20      200000      0.00000005   fix,fix
-# do_fdm weight2d_v 20      200000      0.00000005   fix,fix
-# do_fdm weight2d_w 20      200000      0.00000005   fix,fix
+do_fdm drift3d  20      200000      0.00000005     fix,fix,fix
+do_fdm weight2d_u 20      200000      0.00000005   fix,fix
+do_fdm weight2d_v 20      200000      0.00000005   fix,fix
+do_fdm weight2d_w 20      200000      0.00000005   fix,fix
 
 
 # Resume FDM from existing potential
@@ -140,8 +140,8 @@ want initial/weight3dfull_w \
      --potential2d potential/weight2d_w
 
 do_fdm weight3dfull_u 10      9000      0.00001     fix,fix,fix
-# do_fdm weight3dfull_v 10      9000      0.00001     fix,fix,fix
-# do_fdm weight3dfull_w 10      9000      0.00001     fix,fix,fix
+do_fdm weight3dfull_v 10      9000      0.00001     fix,fix,fix
+do_fdm weight3dfull_w 10      9000      0.00001     fix,fix,fix
 
 
 want velocity/drift3d \
@@ -150,9 +150,6 @@ want velocity/drift3d \
      --velocity velocity/drift3d
 
 
-# want starts/drift3d \
-#     pochoir starts --starts starts/drift3d \
-#      '0.05*mm,0.05*mm,198*mm' 
 
 want starts/drift3d \
     pochoir starts --starts starts/drift3d \
@@ -187,9 +184,9 @@ want paths/drift3d_w \
     --paths paths/drift3d_w '0*us,300*us,0.1*us'
      # --paths paths/drift3d '0*us,300*us,0.05*us'
 
-# pochoir extendwf -p potential/weight2d_u -P potential/weight3dfull_u -n 10 -o potential/weight3dextend_u
-# pochoir extendwf -p potential/weight2d_v -P potential/weight3dfull_v -n 10 -o potential/weight3dextend_v
-# pochoir extendwf -p potential/weight2d_w -P potential/weight3dfull_w -n 10 -o potential/weight3dextend_w
+pochoir extendwf -p potential/weight2d_u -P potential/weight3dfull_u -n 10 -o potential/weight3dextend_u
+pochoir extendwf -p potential/weight2d_v -P potential/weight3dfull_v -n 10 -o potential/weight3dextend_v
+pochoir extendwf -p potential/weight2d_w -P potential/weight3dfull_w -n 10 -o potential/weight3dextend_w
 
 
 # want current/induced_current_avg_ind_u \

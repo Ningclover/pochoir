@@ -94,26 +94,26 @@ do_fdm drift3d  200      2000000      0.000001     fix,fix,fix
 
 # Resume FDM from existing potential
 # Resume FDM from existing potential (overwrites without checking)
-do_fdm_resume () {
-    local name=$1 ; shift
-    local nepochs=$1 ; shift
-    local epoch=$1 ; shift
-    local prec=$1 ; shift
-    local edges=$1 ; shift
+# do_fdm_resume () {
+#     local name=$1 ; shift
+#     local nepochs=$1 ; shift
+#     local epoch=$1 ; shift
+#     local prec=$1 ; shift
+#     local edges=$1 ; shift
 
-    # Remove 'want' wrapper to force execution
-    pochoir fdm \
-         --nepochs $nepochs --epoch $epoch --precision $prec \
-         --edges $edges \
-         --engine cumba \
-         --initial potential/$name \
-         --boundary boundary/$name \
-         --potential potential/$name \
-         --increment increment/$name
-}
+#     # Remove 'want' wrapper to force execution
+#     pochoir fdm \
+#          --nepochs $nepochs --epoch $epoch --precision $prec \
+#          --edges $edges \
+#          --engine cumba \
+#          --initial potential/$name \
+#          --boundary boundary/$name \
+#          --potential potential/$name \
+#          --increment increment/$name
+# }
 
-# # Then call it:
-do_fdm_resume drift3d  200  2000000  0.000000001  fix,fix,fix
+# # # Then call it:
+# do_fdm_resume drift3d  200  2000000  0.000000001  fix,fix,fix
 
 
 date
