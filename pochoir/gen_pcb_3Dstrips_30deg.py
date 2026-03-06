@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
 from .gen_pcb_quarter_30deg import draw_pcb_plane as draw_quarter
+from .gen_pcb_quarter_30deg import draw_plane
 
 def mirror_arr_yaxis(arr):
     result = numpy.empty_like(arr)
@@ -39,12 +40,12 @@ def draw_3Dstrips(arr,barr,qbarr_4,Nstrips,pcb_low_edge,pcb_width,plane):
             #at the moment plane 1 is ind2 and plane 2 is ind 1 follow coll->ind2->ind1->shield
             if plane==1 and v==1:
                 half = int((Nstrips-1)*3/2)
-                arr[half*shape[0]:(half+1)*shape[0],0:shape[1],pcb_low_edge+v*pcb_width] = qbarr_1[:,:,0]
+                arr[half*shape[0]:(half+1)*shape[0],0:shape[1],pcb_low_edge+pcb_width] = qbarr_1[:,:,0]
                 arr[half*shape[0]:(half+1)*shape[0],shape[1]:2*shape[1],pcb_low_edge+pcb_width] = qbarr_4[:,:,0]
                 arr[(half+1)*shape[0]:(half+2)*shape[0],0:shape[1],pcb_low_edge+pcb_width] = qbarr_4[:,:,0]
                 arr[(half+1)*shape[0]:(half+2)*shape[0],shape[1]:2*shape[1],pcb_low_edge+pcb_width] = qbarr_1[:,:,0]
                 arr[(half+2)*shape[0]:(half+3)*shape[0],0:shape[1],pcb_low_edge+pcb_width] = qbarr_1[:,:,0]
-                arr[(half+2)*shape[0]:(half+3)*shape[0],shape[1]:2*shape[1],pcb_low_edge+v*pcb_width] = qbarr_4[:,:,0]
+                arr[(half+2)*shape[0]:(half+3)*shape[0],shape[1]:2*shape[1],pcb_low_edge+pcb_width] = qbarr_4[:,:,0]
             # if plane==2 and v==2:
             #     half = int((Nstrips-1)*3/2)
             #     arr[half*shape[0]:(half+1)*shape[0],0:shape[1],pcb_low_edge+2*pcb_width] = qbarr_1[:,:,0]
@@ -76,10 +77,11 @@ def draw_3Dstrips(arr,barr,qbarr_4,Nstrips,pcb_low_edge,pcb_width,plane):
                 half = int((Nstrips-1)*3/2)
                 arr[half*shape[0]:(half+1)*shape[0],0:shape[1],pcb_low_edge] = qbarr_1[:,:,0]
                 arr[half*shape[0]:(half+1)*shape[0],shape[1]:2*shape[1],pcb_low_edge] = qbarr_4[:,:,0]
-                arr[(half+1)*shape[0]:(half+2)*shape[0],0:shape[1],pcb_low_edge+pcb_width] = qbarr_4[:,:,0]
+                arr[(half+1)*shape[0]:(half+2)*shape[0],0:shape[1],pcb_low_edge] = qbarr_4[:,:,0]
                 arr[(half+1)*shape[0]:(half+2)*shape[0],shape[1]:2*shape[1],pcb_low_edge] = qbarr_1[:,:,0]
                 arr[(half+2)*shape[0]:(half+3)*shape[0],0:shape[1],pcb_low_edge] = qbarr_1[:,:,0]
                 arr[(half+2)*shape[0]:(half+3)*shape[0],shape[1]:2*shape[1],pcb_low_edge] = qbarr_4[:,:,0]
+            print("z = ",pcb_low_edge+v*pcb_width)
 
 
 def generator(dom, cfg):
@@ -88,8 +90,9 @@ def generator(dom, cfg):
     r1 = int(round(cfg['FirstHoleRadius']/dom.spacing[0])-1)
     r2 = int(round(cfg['SecondHoleRadius']/dom.spacing[0])-1)
     pcb_width = int(cfg['PcbWidth']/dom.spacing[0])
-    pcb_low_edge = int(cfg['PcbLowEdgePosition']/dom.spacing[0])
+    pcb_low_edge = int(cfg['PcbLowEdgePosition']/dom.spacing[2])
     Nstrips = cfg['Nstrips']
+    ground_plane = int(cfg['GroundPosition']/dom.spacing[2])
     
     shape_q = (int(round(cfg['QuarterDimX']/dom.spacing[0])),int(round(cfg['QuarterDimY']/dom.spacing[0])),1)
     
@@ -102,6 +105,7 @@ def generator(dom, cfg):
     
     #draw full pattern
     draw_3Dstrips(arr,barr,qbarr_4,Nstrips,pcb_low_edge,pcb_width,plane)
+    draw_plane(barr,ground_plane,1) 
     
     barr[:,:,0]=1
     return arr,barr

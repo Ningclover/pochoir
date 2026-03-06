@@ -119,14 +119,14 @@ def draw_pcb_plane(shape,arr,z,r1,r2,free,val):
         fill_area(arr,barr2,val[0])
 
 def draw_3D_pcb(arr,shape,r1,r2,z_l,v_ind1,v_ind2,v_coll,v_cath,pcb_width):
-    
+    # print(z_l,z_l+pcb_width,z_l+pcb_width+100,z_l+2*pcb_width+100,shape[2]-1) 
     
     for z in range(shape[2]-1)[1:-2]:
        draw_pcb_plane(shape,arr,z,r1,r2,1,(0,0))
     draw_pcb_plane(shape,arr,z_l,r1,r2,0,(0,v_coll))
     draw_pcb_plane(shape,arr,z_l+pcb_width,r1,r2,0,(0,v_ind2))
-    draw_pcb_plane(shape,arr,z_l+pcb_width+200,r1,r2,0,(0,v_ind1))
-    draw_pcb_plane(shape,arr,z_l+2*pcb_width+200,r1,r2,0,(0,-1500))
+    draw_pcb_plane(shape,arr,z_l+pcb_width+100,r1,r2,0,(0,v_ind1))
+    draw_pcb_plane(shape,arr,z_l+2*pcb_width+100,r1,r2,0,(0,-1500))
     draw_pcb_plane(shape,arr,shape[2]-1,r1,r2,1,(v_cath,0))
     print("shape: ",shape[2]-1)
     draw_pcb_plane(shape,arr,0,r1,r2,1,(0,0))
@@ -136,7 +136,8 @@ def generator(dom, cfg):
     r2 = int(round(cfg['SecondHoleRadius']/dom.spacing[0])-1)
     pcb_width = int(cfg['PcbWidth']/dom.spacing[2])
     pcb_low_edge = int(cfg['PcbLowEdgePosition']/dom.spacing[2])
-    print(r1,r2,pcb_low_edge,pcb_width)
+    ground_plane = int(cfg['GroundPosition']/dom.spacing[2])
+    # print(r1,r2,pcb_low_edge,pcb_width)
     collectionPotential = cfg['CollectionPotential']
     induction1Potential = cfg['Induction1Potential']
     induction2Potential = cfg['Induction2Potential']
@@ -146,7 +147,11 @@ def generator(dom, cfg):
     arr = numpy.zeros(dom.shape)
     barr = numpy.ones(dom.shape)
     draw_3D_pcb(arr,dom.shape,r1,r2,pcb_low_edge,-1,-1,-1,-1,pcb_width)
+    draw_plane(arr,ground_plane,-1) 
     barr[arr == 0] = 0
     draw_3D_pcb(arr,dom.shape,r1,r2,pcb_low_edge,induction1Potential,induction2Potential,collectionPotential,cathodePotential,pcb_width)
+    draw_plane(arr,ground_plane,0) 
 
+    print(f'gen dtypes: arr={arr.dtype}, barr={barr.dtype}')
+    print(f'gen shapes: arr={arr.shape}, barr={barr.shape}')
     return arr,barr

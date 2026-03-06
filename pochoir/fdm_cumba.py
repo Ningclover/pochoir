@@ -62,10 +62,19 @@ def solve(iarr, barr, periodic, prec, epoch, nepochs,
     barr_pad = cupy.pad(cupy.array(barr), 1)
     bi_pad = cupy.pad(cupy.array(iarr*barr), 1)
     mutable_pad = cupy.pad(cupy.invert(cupy.array(barr).astype(bool)), 1)
-
     tmp_pad = cupy.zeros_like(iarr_pad)
-
     err = cupy.zeros_like(iarr)
+
+    # iarr_pad = cupy.pad(cupy.array(iarr, dtype=cupy.float32), 1)
+    # barr_pad = cupy.pad(cupy.array(barr, dtype=cupy.float32), 1)
+    # bi_pad = cupy.pad(cupy.array(iarr*barr, dtype=cupy.float32), 1)
+    # mutable_pad = cupy.pad(cupy.invert(cupy.array(barr).astype(bool)), 1)
+    # tmp_pad = cupy.zeros_like(iarr_pad)
+    # err = cupy.zeros(iarr.shape, dtype=cupy.float32)
+
+    print(f'dtypes: iarr={iarr.dtype}, barr={barr.dtype}')
+    print(f'dtypes: iarr_pad={iarr_pad.dtype}, barr_pad={barr_pad.dtype}, bi_pad={bi_pad.dtype}')
+    print(f'dtypes: mutable_pad={mutable_pad.dtype}, tmp_pad={tmp_pad.dtype}, err={err.dtype}')
 
     # Get indices of fixed boundary values and values themselves
     core = arrays.core_slices1(iarr_pad)

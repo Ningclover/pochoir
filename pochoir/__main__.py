@@ -416,9 +416,9 @@ def velo(ctx, temperature, potential, velocity,dl_key,dt_key):
     # Dynamically calculate x-axis based on actual domain Z dimension
     z_length_mm = dom.shape[2] * dom.spacing[2]
     x = numpy.linspace(0, z_length_mm, dom.shape[2])
-    for i in range(0,dom.shape[0]):
-        for j in range(0,dom.shape[1]):
-            plt.plot(x,speed_z[i,j,:])
+    # for i in range(0,dom.shape[0]):
+    #     for j in range(0,dom.shape[1]):
+    #         plt.plot(x,speed_z[i,j,:])
             #if i==10 and j==8:
             #    for l in range(1,len(x)-1):
             #        print(x[l]," ",pot[i,j,l]," ",(pot[i,j,l+1]-pot[i,j,l-1]))
@@ -430,7 +430,7 @@ def velo(ctx, temperature, potential, velocity,dl_key,dt_key):
             #if i==10 and j==8:
                 #for l in range(1,len(x)-1):
                  #   print(x[l]," ",pot[i,j,l]," ",(pot[i,j,l+1]-pot[i,j,l-1]))
-    plt.show()
+    # plt.show()
     params = dict(domain=domain, command="velo",
                   potential=potential, temperature=temp)
     # save velocity
@@ -644,7 +644,10 @@ def extendwf(ctx,
     horizontal = "yes"
     if horizontal=="yes":
         onestrip = dom3D.shape[0]/7.0
-        newXdim = int((nstrips*2+1)*onestrip)
+        # newXdim = int((nstrips*2+1)*onestrip)
+        # Ensure we don't exceed 2D solution bounds
+        # newXdim = min(newXdim, sol2D.shape[0])
+        newXdim =sol2D.shape[0] 
         arr = numpy.zeros((newXdim,dom3D.shape[1],dom2D.shape[1]))
         for i in range(0,newXdim):
             if i<onestrip*7:
@@ -671,7 +674,8 @@ def extendwf(ctx,
    #     arr[:,i,int(dom3D.shape[2]+4)]=(sol3D[:,i,int(dom3D.shape[2]-1)]+arr[:,i,int(dom3D.shape[2]+4)])/2
     print("final domain:",arr.shape)
     dom = pochoir.domain.Domain(arr.shape, 0.1, [0.0,0.0,0.0])
-    domain = "domain/weight3dextend"
+    # Create unique domain name based on output to avoid overwrites
+    domain = "domain/" + output.replace("potential/", "").replace("/", "_")
     ctx.obj.put_domain(domain, dom)
     params = dict(command="extendwf",domain=domain,
                   potential2d=potential2d,potential3d=potential3d,nstrips=nstrips, output=output )
@@ -722,8 +726,10 @@ def move_paths(ctx, input, translation, output):
               help="Calculate current for n strips from the central as well ")
 @click.option("-O", "--output", type=str,
               help="Output array holding induced current waveforms")
+@click.option("-S", "--shifted-paths-output", type=str, default=None,
+              help="Output array holding shifted paths")
 @click.pass_context
-def induce(ctx, charge, weighting, paths, average,nstrips, output):
+def induce(ctx, charge, weighting, paths, average,nstrips, output,shifted_paths_output):
     '''
     Calculate induced current.
 
@@ -751,6 +757,7 @@ def induce(ctx, charge, weighting, paths, average,nstrips, output):
     shifted_paths = []
     if nstrips>1:
         dx = dom.shape[0]*dom.spacing[0]/nstrips
+        dx=5.1
         print("dx=",dx)
         for i in range(0,int(nstrips)):
             for j in range(0,len(the_paths)):
@@ -771,6 +778,10 @@ def induce(ctx, charge, weighting, paths, average,nstrips, output):
             shifted_paths.append(newpath)
         shifted_paths=numpy.array(shifted_paths)
     print("TotalPaths=",len(shifted_paths))
+    if shifted_paths_output:
+        params=dict(taxon="paths", command="induce", domain=domain,
+                    tstart=pmd['tstart'], tstop=pmd['tstop'], nsteps=pmd['nsteps'])
+        ctx.obj.put(shifted_paths_output, shifted_paths, **params)
     Q = charge * rgi(shifted_paths) #/ units.V
     #print(wpot[325+714,14,340],wpot[325+714,15,340],wpot[326+714,14,340],wpot[325+714,15,340])
     assert len(Q.shape) == 2
@@ -946,8 +957,10 @@ def induce_pixel(ctx, charge, weighting, paths, average,npixels, output):
               help="Calculate current for n strips from the central as well ")
 @click.option("-O", "--output", type=str,
               help="Output array holding induced current waveforms")
+@click.option("-S", "--shifted-paths-output", type=str, default=None,
+              help="Output array holding shifted paths")
 @click.pass_context
-def induce_30deg(ctx, charge, weighting, paths, average,nstrips, output):
+def induce_30deg(ctx, charge, weighting, paths, average,nstrips, output, shifted_paths_output):
     '''
     Calculate induced current for 30deg config.
 
@@ -970,47 +983,67 @@ def induce_30deg(ctx, charge, weighting, paths, average,nstrips, output):
     ticks = pochoir.arrays.linspace(pmd['tstart'], pmd['tstop'],
                                     pmd['nsteps'], endpoint=False)
     rgi = pochoir.arrays.rgi(dom.linspaces, wpot)
-    shift_x = dom.shape[0]*dom.spacing[0]/2.0
+    shift_x = dom.shape[0]*dom.spacing[0]/2.0-2.55*3/2
+
     shift_y = 0#dom.shape[1]*dom.spacing[1]/2.0
     shifted_paths = []
     if nstrips>1:
-        dx = dom.shape[0]*dom.spacing[0]/nstrips
+        # dx = dom.shape[0]*dom.spacing[0]/nstrips
+        dx =7.615 # strip width 
+        print('dx =',dx )
         for i in range(0,int(nstrips)):
             counter=0
             print("Process Strip: ",i)
-            if(i%2==0):
+            print("n path: ",len(the_paths)/2)
+
+            if(i%2==1):
                 print("Direction 1")
                 for j in range(0,int(len(the_paths)/2)):
                 #newpath = [[45+(2.0*i+1.0)*dx/2.0-x[0],x[1],x[2]] for x in the_paths[j]]
                 #newpath = [[(2.0*i+1.0)*dx/2.0+x[0],x[1],x[2]] for x in the_paths[j]] config for 5mm strip looks like I put it on right sided of the strip
                 #for 30deg we sim paths as following first 4x11 paths are just shift and last 2x11 need a reversal as well
-                    if counter<4*11:
+                    if counter<4*10:
                         # v1 newpath = [[i*1.0*dx+x[0],x[1],x[2]] for x in the_paths[j]]
                         newpath = [[i*1.0*dx+x[0],x[1],x[2]] for x in the_paths[j]]
                     else:
                         # v1 newpath = [[2*2.55-x[0]+i*1.0*dx,x[1],x[2]] for x in the_paths[j]]
-                        newpath = [[2.55+x[0]+i*1.0*dx,x[1]+1.45,x[2]] for x in the_paths[j]]
+                        newpath = [[2.53+x[0]+i*1.0*dx,x[1]+1.45,x[2]] for x in the_paths[j]]
                     counter=counter+1
                 #flip if needed
                 #newpaths_f = [[x[0]-dx/2.0,x[1],x[2]] for x in newpaths[j]]
                     shifted_paths.append(newpath)
+                    # print("counter: ",counter)
             else:
                 print("Direction 2")
                 for j in range(int(len(the_paths)/2),len(the_paths)):
-                    if counter<4*11:
+                    if counter<4*10:
                     # v1 newpath = [[2.55-x[0]+i*1.0*dx,x[1],x[2]] for x in the_paths[j]]
                         newpath = [[x[0]+i*1.0*dx,x[1]+1.45,x[2]] for x in the_paths[j]]
                     else:
                     # v1 newpath = [[2.55+x[0]+i*1.0*dx,x[1],x[2]] for x in the_paths[j]]
-                        newpath = [[2.55+x[0]+i*1.0*dx,x[1],x[2]] for x in the_paths[j]]
+                        newpath = [[2.53+x[0]+i*1.0*dx,x[1],x[2]] for x in the_paths[j]]
                     counter=counter+1
                     shifted_paths.append(newpath)
+                    # print("counter: ",counter)
     if nstrips<=1:
         for i in range(0,len(the_paths)):
             newpath = [[shift_x+x[0],x[1]+shift_y,x[2]] for x in the_paths[i]]
             shifted_paths.append(newpath)
         shifted_paths=numpy.array(shifted_paths)
     print("TotalPaths=",len(shifted_paths))
+    shifted_paths = numpy.array(shifted_paths)
+
+    if shifted_paths_output:
+        params=dict(taxon="paths", command="induce_30deg", domain=domain,
+                    tstart=pmd['tstart'], tstop=pmd['tstop'], nsteps=pmd['nsteps'])
+        ctx.obj.put(shifted_paths_output, shifted_paths, **params)
+
+    print("Domain x range:", dom.linspaces[0][0], "to", dom.linspaces[0][-1])
+    print("Paths x range:", shifted_paths[:,:,0].min(), "to", shifted_paths[:,:,0].max())
+    print("Domain y range:", dom.linspaces[1][0], "to", dom.linspaces[1][-1])
+    print("Paths y range:", shifted_paths[:,:,1].min(), "to", shifted_paths[:,:,1].max())
+    print("Domain z range:", dom.linspaces[2][0], "to", dom.linspaces[2][-1])
+    print("Paths z range:", shifted_paths[:,:,2].min(), "to", shifted_paths[:,:,2].max())
     Q = charge * rgi(shifted_paths) #/ units.V
     assert len(Q.shape) == 2
     #assert Q.shape[0] == npaths
@@ -1025,9 +1058,10 @@ def induce_30deg(ctx, charge, weighting, paths, average,nstrips, output):
         print("Average ", average," paths along the stip")
         tot_paths = int(len(I_tot)/average)
         for i in range(0,len(I_tot),int(average)):
+            navg = min(int(average), len(I_tot) - i)
             print("Averaging processed: ",i," out of",len(I_tot))
             I_temp = numpy.zeros(I_tot[0].shape)
-            for p in range(0,int(average)):
+            for p in range(0, navg):
                 I_temp=I_temp+numpy.asarray(I_tot[i+p])
             I_temp = I_temp/average
             I.append(I_temp.tolist())
@@ -1097,9 +1131,9 @@ def convertfr(ctx, uinput,vinput,winput,output, configs):
             pr_I1 = schema.PathResponse(-1*curr_I1[i+j][0:1325],pitchpos_I1,wirepos=0)
             pr_I2 = schema.PathResponse(-1*curr_I2[i+j][0:1325],pitchpos_I2,wirepos=0)
             pr_C = schema.PathResponse(-1*curr_C[i+j][0:1325],pitchpos_C,wirepos=0)
-            if i+j>0:
-                x = numpy.linspace(0,1325,1325)
-                plt.plot(x,curr_I2[i+j][0:1325])
+            # if i+j>0:
+                # x = numpy.linspace(0,1325,1325)
+                # plt.plot(x,curr_I2[i+j][0:1325])
             pathR_I1.append(pr_I1)
             pathR_I2.append(pr_I2)
             pathR_C.append(pr_C)

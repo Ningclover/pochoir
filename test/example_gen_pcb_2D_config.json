@@ -6,5 +6,6 @@
     "HoleDiameter" : 2.4,
      "BetweenHoles" : 1.35,
     "LowEdgePosition" : 17,
-    "Nstrips" : 21
+    "Nstrips" : 21,
+    "GroundPosition" : 7
 }

@@ -6,5 +6,6 @@
     "PcbLowEdgePosition" : 17,
     "Nstrips" : 7,
     "QuarterDimX" : 2.55,
-    "QuarterDimY" : 1.45
+    "QuarterDimY" : 1.47,
+    "GroundPosition" : 7
 }

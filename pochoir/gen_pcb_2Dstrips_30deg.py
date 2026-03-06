@@ -58,6 +58,7 @@ def generator(dom, cfg):
     holeWidth = cfg['HoleDiameter']    # hole diameter in the strip
     betweenHoles = cfg['BetweenHoles']
     Nstrips = cfg['Nstrips']           # total number of strips
+    ground_plane = int(cfg['GroundPosition']/dom.spacing[1])
         
     shape = dom.shape
     spacing = dom.spacing[0]
@@ -77,7 +78,7 @@ def generator(dom, cfg):
     if plane==2:
         draw_hole_pattern(arr,barr,dom,z_i1,widthX,widthZ,holeWidth,betweenHoles,Nstrips,1)
 
-
+    barr[:,ground_plane] = 1 
     barr[:,0]=1
     barr[0,:]=1
     barr[-1,:]=1
